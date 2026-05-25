@@ -373,6 +373,26 @@ async def trading_loop(assets, goal):
                                 
                             del open_positions[asset]
                             
+                            # Check if we should trigger an automatic reflection cycle!
+                            try:
+                                closed_count = 0
+                                if trades_path.exists():
+                                    with open(trades_path, "r") as tf:
+                                        for line in tf:
+                                            if line.strip():
+                                                trade_obj = json.loads(line)
+                                                if trade_obj.get("status") == "closed":
+                                                    closed_count += 1
+                                
+                                reflection_cadence = goal.get("reflection_every", 5)
+                                if closed_count > 0 and closed_count % reflection_cadence == 0:
+                                    print(f">>> [Auto-Reflection] Closed trades count ({closed_count}) is a multiple of {reflection_cadence}. Launching strategy updates...")
+                                    import subprocess
+                                    import sys
+                                    subprocess.Popen([sys.executable, "-m", "hermes_trading.reflect", "--fallback"])
+                            except Exception as re:
+                                print(f"Error checking/triggering automatic reflection: {re}")
+                            
                     else:
                         # ENTRY LOGIC
                         # 1. Technical Indicator Condition (RSI, SMA, MACD, Bollinger Bands, or Gemini AI Decision)
