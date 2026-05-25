@@ -1,0 +1,16 @@
+assets:
+- RELIANCE
+- INFY
+- IRFC
+currency: INR
+current_capital_inr: 50000
+exchange: NSE
+failure_below: -0.04
+market_hours: 09:15-15:30 IST
+max_drawdown: 0.07
+min_sharpe: 1.0
+one_variable_only: true
+paper_mode: true
+reflection_every: 5
+starting_capital_inr: 50000
+target_return_30d: 0.08
