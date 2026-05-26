@@ -158,7 +158,7 @@ Create the directory tree at `~/hermes-trading`:
 
 Generate real, runnable code for each file (no placeholders). Contracts:
 
-**`run.py`** — entrypoint. Parses `--assets` from goal.yaml. Checks current IST time against `market_hours` in goal.yaml — if outside NSE hours (09:15–15:30 IST Mon–Fri, excluding NSE holidays), sleeps and waits. Starts the loop when market opens.
+**`run.py`** — entrypoint. Automatically loads environment variables (such as API keys) from `.env` using a built-in, lightweight, and robust `.env` parser to avoid external dependencies. Parses `--assets` from `goal.yaml`. Checks current IST time against `market_hours` in `goal.yaml` — if outside NSE hours (09:15–15:30 IST Mon–Fri, excluding NSE holidays), sleeps and waits. Starts the loop when market opens.
 
 **`loop.py`** — async loop. Every minute during NSE market hours: iterate over all `assets` from `goal.yaml`. For each asset:
 - Pull live price and compute technical indicators: RSI (14-period), SMAs (9 and 21), MACD and Signal lines, Bollinger Bands, and ATR (14-period Average True Range).
