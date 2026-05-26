@@ -168,7 +168,7 @@ Generate real, runnable code for each file (no placeholders). Contracts:
   * `indicator: sma_cross`: Golden cross triggers if SMA9 > SMA21.
   * `indicator: macd`: triggers if MACD > Signal.
   * `indicator: bollinger`: triggers if price <= Lower Bollinger Band.
-  * `indicator: ai`: calls the live Google Gemini, Anthropic Claude, or OpenAI model (based on `HERMES_PROVIDER` and `HERMES_MODEL` in `.env`) to make an AI-driven BUY/HOLD decision based on full technical, corporate fundamentals, live news sentiment, and macro index regime.
+  * `indicator: ai`: calls the live Google Gemini, Anthropic Claude, or OpenAI model (based on `HERMES_PROVIDER` and `HERMES_MODEL` in `.env`) to make an AI-driven BUY/HOLD decision based on full technical, corporate fundamentals, live news sentiment, and macro index regime. Includes intelligent API Quota Protection: a 5-minute cooldown per asset and technical pre-filtering (skips AI queries entirely on overbought stocks with RSI >= 55).
 - Support dynamic, volatility-adjusted ATR exit modes:
   * `stop_loss_mode: fixed`: Exit if price drops below fixed stop_loss_pct.
   * `stop_loss_mode: atr`: Exit if price drops below `entry_price - (multiplier * ATR)`.

@@ -12,6 +12,7 @@ import httpx
 from hermes_trading.adapters import news, macro, fundamentals
 
 IST = pytz.timezone("Asia/Kolkata")
+last_ai_queries = {}
 
 async def get_market_data(asset):
     # Fetch 5 days of 15m data to have enough periods for all indicators
@@ -411,12 +412,27 @@ async def trading_loop(assets, goal):
                             # Buy when price crosses below or touches Lower Band
                             tech_condition = price <= bb_lower
                         elif indicator_type == "ai":
-                            # Query live Gemini AI decision model
-                            ai_decision = await get_ai_decision(asset, price, market_data, news_data, fundamentals_data, macro_data)
-                            decision = ai_decision.get("decision", "HOLD")
-                            reason = ai_decision.get("reason", "No reason provided.")
-                            print(f">>> [Gemini AI Decision] {asset}: {decision} | Reason: {reason}")
-                            tech_condition = (decision == "BUY")
+                            # 1. Technical Pre-filtering: Only consult the AI model if RSI is reasonably cool (RSI < 55)
+                            # This saves significant API quota by ignoring clearly overbought assets.
+                            if rsi >= 55:
+                                print(f"[{now.strftime('%H:%M:%S')}] {asset} | Pre-filtered: RSI ({rsi:.1f}) >= 55 is overbought. Skipping AI query.")
+                                tech_condition = False
+                            else:
+                                # 2. 5-Minute AI Cooldown: Avoid spamming the model every minute for the same asset
+                                cooldown_key = f"{asset}_entry"
+                                last_query_time = last_ai_queries.get(cooldown_key)
+                                
+                                if last_query_time and (now - last_query_time).total_seconds() < 300:
+                                    print(f"[{now.strftime('%H:%M:%S')}] {asset} | AI Cooldown: Asked less than 5m ago. Skipping AI query.")
+                                    tech_condition = False
+                                else:
+                                    # Query live Gemini AI decision model
+                                    ai_decision = await get_ai_decision(asset, price, market_data, news_data, fundamentals_data, macro_data)
+                                    last_ai_queries[cooldown_key] = now
+                                    decision = ai_decision.get("decision", "HOLD")
+                                    reason = ai_decision.get("reason", "No reason provided.")
+                                    print(f">>> [Gemini AI Decision] {asset}: {decision} | Reason: {reason}")
+                                    tech_condition = (decision == "BUY")
                         
                         # 2. News Sentiment Condition (if configured)
                         news_condition = True
