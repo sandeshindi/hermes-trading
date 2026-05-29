@@ -153,6 +153,7 @@ async def handle_dashboard(request):
                         <th>Date (IST)</th>
                         <th>Asset</th>
                         <th>Side</th>
+                        <th>Qty</th>
                         <th>Entry Price</th>
                         <th>Exit Price</th>
                         <th>P&L (INR)</th>
@@ -160,7 +161,7 @@ async def handle_dashboard(request):
                     </tr>
                 </thead>
                 <tbody>
-                    {"".join([f"<tr><td>{t['entry_time']}</td><td>{t.get('asset', '-')}</td><td>{t['side']}</td><td>₹{t['entry_price']}</td><td>₹{t.get('exit_price', '-')}</td><td style='color: {'green' if t.get('pnl_inr', 0) >= 0 else 'red'}'>{t.get('pnl_inr', '-')}</td><td>{t['status']}</td></tr>" for t in trades[-10:][::-1]]) if trades else "<tr><td colspan='7' style='text-align:center'>No trades yet</td></tr>"}
+                    {"".join([f"<tr><td>{t['entry_time']}</td><td>{t.get('asset', '-')}</td><td>{t['side']}</td><td>{t.get('quantity', '-')}</td><td>₹{t['entry_price']}</td><td>₹{t.get('exit_price', '-')}</td><td style='color: {'green' if t.get('pnl_inr', 0) >= 0 else 'red'}'>{t.get('pnl_inr', '-')}</td><td>{t['status']}</td></tr>" for t in trades[-10:][::-1]]) if trades else "<tr><td colspan='8' style='text-align:center'>No trades yet</td></tr>"}
                 </tbody>
             </table>
         </div>
