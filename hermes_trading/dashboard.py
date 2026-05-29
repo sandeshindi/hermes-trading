@@ -12,6 +12,19 @@ async def handle_dashboard(request):
     from hermes_trading.config import get_state_dir
     state_path = get_state_dir()
     
+    # Intercept manual reflection request (?reflect=true)
+    if request.query.get("reflect") == "true":
+        print(">>> [Web Trigger] Manual reflection requested via dashboard URL parameter.")
+        try:
+            import subprocess
+            import sys
+            subprocess.run([sys.executable, "-m", "hermes_trading.reflect", "--fallback"])
+            raise web.HTTPFound('/')
+        except web.HTTPFound:
+            raise
+        except Exception as e:
+            print(f"Error triggering manual reflection: {e}")
+    
     goal_path = state_path / "goal.yaml"
     trades_path = state_path / "trades.jsonl"
     strategy_path = state_path / "strategy.yaml"
