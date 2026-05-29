@@ -29,8 +29,18 @@ async def handle_dashboard(request):
         rsi_val = info.get("rsi")
         price_str = f"₹{price_val:,.2f}" if price_val is not None else "₹-"
         rsi_str = f"RSI: {rsi_val:.1f}" if rsi_val is not None else "RSI: -"
+        
+        ai_decision = info.get("ai_decision", "SCANNING")
+        ai_reason = info.get("ai_reason", "Waiting for AI consult or indicators threshold...")
+        ai_class = f"ai-{ai_decision.lower().split()[0]}" if ai_decision else "ai-scanning"
+        
         ticker_items.append(
-            f'<div class="ticker-item"><span class="ticker-symbol">{asset}</span><span class="ticker-price">{price_str}</span><span class="ticker-rsi">({rsi_str})</span></div>'
+            f'<div class="ticker-item">'
+            f'<span class="ticker-symbol">{asset}</span>'
+            f'<span class="ticker-price">{price_str}</span>'
+            f'<span class="ticker-rsi">({rsi_str})</span>'
+            f'<span class="ticker-ai {ai_class}" title="{ai_reason}">{ai_decision}</span>'
+            f'</div>'
         )
     ticker_html = "".join(ticker_items)
     
@@ -76,6 +86,15 @@ async def handle_dashboard(request):
             .ticker-symbol {{ font-weight: bold; color: #ffca28; }}
             .ticker-price {{ font-family: monospace; font-weight: bold; color: #69f0ae; }}
             .ticker-rsi {{ font-size: 0.8em; color: #b0bec5; }}
+            .ticker-ai {{ font-size: 0.8em; padding: 2px 6px; border-radius: 4px; font-weight: bold; text-transform: uppercase; cursor: help; }}
+            .ai-buy {{ background: #2e7d32; color: #a5d6a7; }}
+            .ai-sell {{ background: #c62828; color: #ef9a9a; }}
+            .ai-hold {{ background: #37474f; color: #cfd8dc; }}
+            .ai-skip {{ background: #e65100; color: #ffe0b2; }}
+            .ai-cooldown {{ background: #4e342e; color: #d7ccc8; }}
+            .ai-staggered {{ background: #558b2f; color: #f1f8e9; }}
+            .ai-holding {{ background: #1565c0; color: #bbdefb; }}
+            .ai-scanning {{ background: #00838f; color: #e0f7fa; }}
         </style>
     </head>
     <body>

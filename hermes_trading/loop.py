@@ -301,7 +301,9 @@ async def trading_loop(assets, goal):
                     latest_prices[asset] = {
                         "price": price,
                         "rsi": rsi,
-                        "timestamp": now.strftime('%H:%M:%S')
+                        "timestamp": now.strftime('%H:%M:%S'),
+                        "ai_decision": "SCANNING",
+                        "ai_reason": "Waiting for AI consult or indicators threshold..."
                     }
                     try:
                         with open(state_path / "prices.json", "w") as pf:
@@ -354,6 +356,14 @@ async def trading_loop(assets, goal):
                     if asset in open_positions:
                         # EXIT LOGIC
                         pos = open_positions[asset]
+                        latest_prices[asset]["ai_decision"] = "HOLDING"
+                        latest_prices[asset]["ai_reason"] = f"Open trade (Qty: {pos['quantity']} @ ₹{pos['entry_price']:.2f}). Monitoring stop-loss & take-profit targets."
+                        try:
+                            with open(state_path / "prices.json", "w") as pf:
+                                json.dump(latest_prices, pf)
+                        except Exception:
+                            pass
+                        
                         entry_price = pos["entry_price"]
                         
                         # Stop Loss and Take Profit levels
@@ -432,6 +442,13 @@ async def trading_loop(assets, goal):
                             if rsi >= 55:
                                 print(f"[{now.strftime('%H:%M:%S')}] {asset} | Pre-filtered: RSI ({rsi:.1f}) >= 55 is overbought. Skipping AI query.")
                                 tech_condition = False
+                                latest_prices[asset]["ai_decision"] = "SKIP"
+                                latest_prices[asset]["ai_reason"] = f"RSI ({rsi:.1f}) >= 55 is overbought (Pre-filtered)."
+                                try:
+                                    with open(state_path / "prices.json", "w") as pf:
+                                        json.dump(latest_prices, pf)
+                                except Exception:
+                                    pass
                             else:
                                 # 2. 5-Minute AI Cooldown: Avoid spamming the model every minute for the same asset
                                 cooldown_key = f"{asset}_entry"
@@ -443,9 +460,23 @@ async def trading_loop(assets, goal):
                                 if last_query_time and (now - last_query_time).total_seconds() < 300:
                                     print(f"[{now.strftime('%H:%M:%S')}] {asset} | AI Cooldown: Asked less than 5m ago. Skipping AI query.")
                                     tech_condition = False
+                                    latest_prices[asset]["ai_decision"] = "COOLDOWN"
+                                    latest_prices[asset]["ai_reason"] = "Individual asset cooldown: asked AI less than 5m ago."
+                                    try:
+                                        with open(state_path / "prices.json", "w") as pf:
+                                            json.dump(latest_prices, pf)
+                                    except Exception:
+                                        pass
                                 elif time_since_last_global < 30:
                                     print(f"[{now.strftime('%H:%M:%S')}] {asset} | Global AI Cooldown: Last query was {time_since_last_global:.1f}s ago. Staggering to prevent rate limit.")
                                     tech_condition = False
+                                    latest_prices[asset]["ai_decision"] = "STAGGERED"
+                                    latest_prices[asset]["ai_reason"] = f"Staggering active. Last query was {time_since_last_global:.1f}s ago."
+                                    try:
+                                        with open(state_path / "prices.json", "w") as pf:
+                                            json.dump(latest_prices, pf)
+                                    except Exception:
+                                        pass
                                 else:
                                     # Query live Gemini AI decision model
                                     ai_decision = await get_ai_decision(asset, price, market_data, news_data, fundamentals_data, macro_data)
@@ -455,6 +486,13 @@ async def trading_loop(assets, goal):
                                     reason = ai_decision.get("reason", "No reason provided.")
                                     print(f">>> [Gemini AI Decision] {asset}: {decision} | Reason: {reason}")
                                     tech_condition = (decision == "BUY")
+                                    latest_prices[asset]["ai_decision"] = decision
+                                    latest_prices[asset]["ai_reason"] = reason
+                                    try:
+                                        with open(state_path / "prices.json", "w") as pf:
+                                            json.dump(latest_prices, pf)
+                                    except Exception:
+                                        pass
                         
                         # 2. News Sentiment Condition (if configured)
                         news_condition = True
