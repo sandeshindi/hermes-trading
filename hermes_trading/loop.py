@@ -13,6 +13,7 @@ from hermes_trading.adapters import news, macro, fundamentals
 
 IST = pytz.timezone("Asia/Kolkata")
 last_ai_queries = {}
+last_global_ai_query_time = None
 
 async def get_market_data(asset):
     # Fetch 5 days of 15m data to have enough periods for all indicators
@@ -241,6 +242,7 @@ async def trading_loop(assets, goal):
     goal_path = state_path / "goal.yaml"
 
     open_positions = {}
+    global last_global_ai_query_time
     
     # Pre-load existing open trades from file to memory
     if trades_path.exists():
@@ -422,13 +424,20 @@ async def trading_loop(assets, goal):
                                 cooldown_key = f"{asset}_entry"
                                 last_query_time = last_ai_queries.get(cooldown_key)
                                 
+                                # 3. Global AI Cooldown: Stagger queries globally by at least 30s to stay safely under RPM limits
+                                time_since_last_global = (now - last_global_ai_query_time).total_seconds() if last_global_ai_query_time else 9999.0
+                                
                                 if last_query_time and (now - last_query_time).total_seconds() < 300:
                                     print(f"[{now.strftime('%H:%M:%S')}] {asset} | AI Cooldown: Asked less than 5m ago. Skipping AI query.")
+                                    tech_condition = False
+                                elif time_since_last_global < 30:
+                                    print(f"[{now.strftime('%H:%M:%S')}] {asset} | Global AI Cooldown: Last query was {time_since_last_global:.1f}s ago. Staggering to prevent rate limit.")
                                     tech_condition = False
                                 else:
                                     # Query live Gemini AI decision model
                                     ai_decision = await get_ai_decision(asset, price, market_data, news_data, fundamentals_data, macro_data)
                                     last_ai_queries[cooldown_key] = now
+                                    last_global_ai_query_time = now
                                     decision = ai_decision.get("decision", "HOLD")
                                     reason = ai_decision.get("reason", "No reason provided.")
                                     print(f">>> [Gemini AI Decision] {asset}: {decision} | Reason: {reason}")
