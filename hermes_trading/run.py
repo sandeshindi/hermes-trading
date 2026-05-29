@@ -38,8 +38,11 @@ def load_dotenv(env_path=".env"):
                     val = val[1:-1]
                 os.environ[key] = val
 
+from hermes_trading.config import get_state_dir
+
 def load_goal():
-    with open("state/goal.yaml", "r") as f:
+    goal_path = get_state_dir() / "goal.yaml"
+    with open(goal_path, "r") as f:
         return yaml.safe_load(f)
 
 async def main():

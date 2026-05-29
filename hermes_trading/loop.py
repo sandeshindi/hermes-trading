@@ -3,7 +3,7 @@ import json
 import yaml
 import os
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from pathlib import Path
 import yfinance as yf
@@ -14,6 +14,7 @@ from hermes_trading.adapters import news, macro, fundamentals
 IST = pytz.timezone("Asia/Kolkata")
 last_ai_queries = {}
 last_global_ai_query_time = None
+rate_limit_penalty_until = None
 
 async def get_market_data(asset):
     # Fetch 5 days of 15m data to have enough periods for all indicators
@@ -235,7 +236,8 @@ def save_yaml(path, data):
         yaml.dump(data, f)
 
 async def trading_loop(assets, goal):
-    state_path = Path("state")
+    from hermes_trading.config import get_state_dir
+    state_path = get_state_dir()
     heartbeat_path = state_path / "heartbeat.json"
     trades_path = state_path / "trades.jsonl"
     strategy_path = state_path / "strategy.yaml"
@@ -243,6 +245,7 @@ async def trading_loop(assets, goal):
 
     open_positions = {}
     global last_global_ai_query_time
+    global rate_limit_penalty_until
     latest_prices = {}
     
     # Pre-load existing open trades from file to memory
@@ -437,9 +440,21 @@ async def trading_loop(assets, goal):
                             # Buy when price crosses below or touches Lower Band
                             tech_condition = price <= bb_lower
                         elif indicator_type == "ai":
+                            # 0. Global Rate Limit Penalty check: If Google AI Studio rate limit is hit, do not call AI
+                            if rate_limit_penalty_until and now < rate_limit_penalty_until:
+                                time_left = (rate_limit_penalty_until - now).total_seconds()
+                                print(f"[{now.strftime('%H:%M:%S')}] {asset} | Rate Limit Penalty Active: Skipping AI query to allow quota recovery ({time_left:.0f}s left).")
+                                tech_condition = False
+                                latest_prices[asset]["ai_decision"] = "PENALTY"
+                                latest_prices[asset]["ai_reason"] = f"Rate Limit Penalty: Active until {rate_limit_penalty_until.strftime('%H:%M:%S')} to allow quota reset."
+                                try:
+                                    with open(state_path / "prices.json", "w") as pf:
+                                        json.dump(latest_prices, pf)
+                                except Exception:
+                                    pass
                             # 1. Technical Pre-filtering: Only consult the AI model if RSI is reasonably cool (RSI < 55)
                             # This saves significant API quota by ignoring clearly overbought assets.
-                            if rsi >= 55:
+                            elif rsi >= 55:
                                 print(f"[{now.strftime('%H:%M:%S')}] {asset} | Pre-filtered: RSI ({rsi:.1f}) >= 55 is overbought. Skipping AI query.")
                                 tech_condition = False
                                 latest_prices[asset]["ai_decision"] = "SKIP"
@@ -486,8 +501,17 @@ async def trading_loop(assets, goal):
                                     reason = ai_decision.get("reason", "No reason provided.")
                                     print(f">>> [Gemini AI Decision] {asset}: {decision} | Reason: {reason}")
                                     tech_condition = (decision == "BUY")
-                                    latest_prices[asset]["ai_decision"] = decision
-                                    latest_prices[asset]["ai_reason"] = reason
+                                    
+                                    # Check if rate limited (status 429)
+                                    if "429" in reason or "quota" in reason.lower() or "limit" in reason.lower():
+                                        rate_limit_penalty_until = now + timedelta(minutes=3)
+                                        print(f">>> [Rate Limit Alert] 429 detected. Setting global penalty active until {rate_limit_penalty_until.strftime('%H:%M:%S')}.")
+                                        latest_prices[asset]["ai_decision"] = "PENALTY"
+                                        latest_prices[asset]["ai_reason"] = f"Gemini Rate Limit (429) Hit. Cool-off penalty active until {rate_limit_penalty_until.strftime('%H:%M:%S')}."
+                                    else:
+                                        latest_prices[asset]["ai_decision"] = decision
+                                        latest_prices[asset]["ai_reason"] = reason
+                                        
                                     try:
                                         with open(state_path / "prices.json", "w") as pf:
                                             json.dump(latest_prices, pf)

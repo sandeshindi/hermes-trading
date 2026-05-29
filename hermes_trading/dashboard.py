@@ -9,17 +9,20 @@ import pytz
 IST = pytz.timezone("Asia/Kolkata")
 
 async def handle_dashboard(request):
-    goal_path = Path("state/goal.yaml")
-    trades_path = Path("state/trades.jsonl")
-    strategy_path = Path("state/strategy.yaml")
-    heartbeat_path = Path("state/heartbeat.json")
-    hypotheses_path = Path("state/hypotheses.jsonl")
+    from hermes_trading.config import get_state_dir
+    state_path = get_state_dir()
+    
+    goal_path = state_path / "goal.yaml"
+    trades_path = state_path / "trades.jsonl"
+    strategy_path = state_path / "strategy.yaml"
+    heartbeat_path = state_path / "heartbeat.json"
+    hypotheses_path = state_path / "hypotheses.jsonl"
 
     goal = yaml.safe_load(goal_path.read_text()) if goal_path.exists() else {}
     strategy = yaml.safe_load(strategy_path.read_text()) if strategy_path.exists() else {}
     heartbeat = json.loads(heartbeat_path.read_text()) if heartbeat_path.exists() else {}
     
-    prices_path = Path("state/prices.json")
+    prices_path = state_path / "prices.json"
     prices = json.loads(prices_path.read_text()) if prices_path.exists() else {}
     
     ticker_items = []
@@ -95,6 +98,12 @@ async def handle_dashboard(request):
             .ai-staggered {{ background: #558b2f; color: #f1f8e9; }}
             .ai-holding {{ background: #1565c0; color: #bbdefb; }}
             .ai-scanning {{ background: #00838f; color: #e0f7fa; }}
+            .ai-penalty {{ background: #b71c1c; color: #ffcdd2; animation: pulse 1.5s infinite; }}
+            @keyframes pulse {{
+                0% {{ opacity: 0.6; }}
+                50% {{ opacity: 1.0; }}
+                100% {{ opacity: 0.6; }}
+            }}
         </style>
     </head>
     <body>

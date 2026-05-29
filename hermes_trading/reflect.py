@@ -8,9 +8,12 @@ import pytz
 IST = pytz.timezone("Asia/Kolkata")
 
 def fallback_reflect():
-    strategy_path = Path("state/strategy.yaml")
-    history_dir = Path("state/history")
-    hypotheses_path = Path("state/hypotheses.jsonl")
+    from hermes_trading.config import get_state_dir
+    state_path = get_state_dir()
+    
+    strategy_path = state_path / "strategy.yaml"
+    history_dir = state_path / "history"
+    hypotheses_path = state_path / "hypotheses.jsonl"
     
     with open(strategy_path, "r") as f:
         strategy = yaml.safe_load(f)
