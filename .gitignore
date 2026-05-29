@@ -9,3 +9,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+#state files
+state/trades.jsonl
+state/hypotheses.jsonl
+state/prices.json
+state/heartbeat.json
