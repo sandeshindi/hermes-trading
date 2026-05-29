@@ -7,6 +7,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 COPY pyproject.toml ./
 COPY hermes_trading ./hermes_trading
 COPY state ./state
+COPY state ./state_templates
 RUN uv sync
 ENV HERMES_TRADING_MODE=paper
 ENV HERMES_TRADING_EXCHANGE=NSE
