@@ -19,6 +19,21 @@ async def handle_dashboard(request):
     strategy = yaml.safe_load(strategy_path.read_text()) if strategy_path.exists() else {}
     heartbeat = json.loads(heartbeat_path.read_text()) if heartbeat_path.exists() else {}
     
+    prices_path = Path("state/prices.json")
+    prices = json.loads(prices_path.read_text()) if prices_path.exists() else {}
+    
+    ticker_items = []
+    for asset in goal.get("assets", []):
+        info = prices.get(asset, {})
+        price_val = info.get("price")
+        rsi_val = info.get("rsi")
+        price_str = f"₹{price_val:,.2f}" if price_val is not None else "₹-"
+        rsi_str = f"RSI: {rsi_val:.1f}" if rsi_val is not None else "RSI: -"
+        ticker_items.append(
+            f'<div class="ticker-item"><span class="ticker-symbol">{asset}</span><span class="ticker-price">{price_str}</span><span class="ticker-rsi">({rsi_str})</span></div>'
+        )
+    ticker_html = "".join(ticker_items)
+    
     trades = []
     if trades_path.exists():
         for line in trades_path.read_text().splitlines():
@@ -55,9 +70,19 @@ async def handle_dashboard(request):
             table {{ width: 100%; border-collapse: collapse; }}
             th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
             th {{ background: #eee; }}
+            .ticker-bar {{ display: flex; flex-wrap: wrap; gap: 10px; background: #1a1a24; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; color: white; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.15); }}
+            .ticker-bar .ticker-label {{ font-weight: bold; text-transform: uppercase; font-size: 0.8em; color: #4fc3f7; border-right: 2px solid #37474f; padding-right: 15px; margin-right: 5px; letter-spacing: 1px; }}
+            .ticker-item {{ background: #263238; padding: 6px 12px; border-radius: 6px; font-size: 0.9em; display: flex; align-items: center; gap: 8px; border: 1px solid #37474f; }}
+            .ticker-symbol {{ font-weight: bold; color: #ffca28; }}
+            .ticker-price {{ font-family: monospace; font-weight: bold; color: #69f0ae; }}
+            .ticker-rsi {{ font-size: 0.8em; color: #b0bec5; }}
         </style>
     </head>
     <body>
+        <div class="ticker-bar">
+            <span class="ticker-label">Live NSE Prices</span>
+            {ticker_html}
+        </div>
         <div class="card header">
             <div>
                 <h1>{", ".join(goal.get('assets', []))} <span style="font-size: 0.5em; background: #eee; padding: 4px 8px; border-radius: 4px;">v{strategy.get('version', '01')}</span></h1>

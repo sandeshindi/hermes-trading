@@ -243,6 +243,7 @@ async def trading_loop(assets, goal):
 
     open_positions = {}
     global last_global_ai_query_time
+    latest_prices = {}
     
     # Pre-load existing open trades from file to memory
     if trades_path.exists():
@@ -295,6 +296,18 @@ async def trading_loop(assets, goal):
                     bb_upper = market_data["bb_upper"]
                     bb_lower = market_data["bb_lower"]
                     atr_val = market_data["atr"]
+                    
+                    # Update prices cache file for the dashboard
+                    latest_prices[asset] = {
+                        "price": price,
+                        "rsi": rsi,
+                        "timestamp": now.strftime('%H:%M:%S')
+                    }
+                    try:
+                        with open(state_path / "prices.json", "w") as pf:
+                            json.dump(latest_prices, pf)
+                    except Exception:
+                        pass
                     
                     # Print standard info with dynamic metrics based on strategy
                     log_msg = f"[{now.strftime('%H:%M:%S')}] {asset} | Price: Rs.{price:.2f}"
