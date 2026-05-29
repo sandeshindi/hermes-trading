@@ -26,10 +26,26 @@ def fallback_reflect():
     with open(history_path, "w") as f:
         yaml.dump(strategy, f)
         
-    # Apply a dummy change for demonstration
-    old_val = strategy["entry"]["threshold"]
-    new_val = old_val - 2
-    strategy["entry"]["threshold"] = new_val
+    # Dynamically resolve which variable to adjust based on active strategy features
+    if "min_sentiment" in strategy.get("entry", {}):
+        old_val = strategy["entry"]["min_sentiment"]
+        new_val = round(old_val + 0.1, 2)  # Tighten sentiment filters to filter out risky trades
+        strategy["entry"]["min_sentiment"] = new_val
+        changed_var = "entry.min_sentiment"
+        reason = "Increased news sentiment threshold to filter out low-confidence entries during down regimes."
+    elif "threshold" in strategy.get("entry", {}):
+        old_val = strategy["entry"]["threshold"]
+        new_val = old_val - 2
+        strategy["entry"]["threshold"] = new_val
+        changed_var = "entry.threshold"
+        reason = "Lowering entry threshold to adjust execution concurrency."
+    else:
+        old_val = strategy.get("stop_loss_pct", 2.0)
+        new_val = round(old_val - 0.2, 2)  # Tighten stop-loss to reduce drawdowns
+        strategy["stop_loss_pct"] = new_val
+        changed_var = "stop_loss_pct"
+        reason = "Tightening stop-loss limits to proactively defend capital against market volatility."
+        
     strategy["version"] = new_version
     
     with open(strategy_path, "w") as f:
@@ -38,10 +54,10 @@ def fallback_reflect():
     hypothesis = {
         "timestamp": datetime.now(IST).isoformat(),
         "version": new_version,
-        "variable": "entry.threshold",
+        "variable": changed_var,
         "old_value": old_val,
         "new_value": new_val,
-        "reason": "Lowering threshold to increase entry frequency based on initial data."
+        "reason": reason
     }
     
     with open(hypotheses_path, "a") as f:
