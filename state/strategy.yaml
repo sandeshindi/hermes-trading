@@ -7,15 +7,15 @@ assets:
 - ADANIENSOL
 - WELCORP
 - ATGL
+atr_multiplier: 2.5
 avoid_bear_regimes: true
 entry:
   direction: long
   indicator: ai
-  min_sentiment: 0.1
+  min_sentiment: 0.2
 exchange: NSE
 holding_period_days: 5
 position_size_r: 0.5
-stop_loss_pct: 2.0
 stop_loss_mode: atr
-atr_multiplier: 2.5
-version: '06'
+stop_loss_pct: 2.0
+version: '07'

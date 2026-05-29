@@ -1,0 +1,1 @@
+{"timestamp": "2026-05-29T15:49:30.807294+05:30", "version": "07", "variable": "entry.min_sentiment", "old_value": 0.1, "new_value": 0.2, "reason": "Increased news sentiment threshold to filter out low-confidence entries during down regimes."}
