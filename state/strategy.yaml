@@ -2,6 +2,11 @@ assets:
 - RELIANCE
 - INFY
 - IRFC
+- BHEL
+- ADANIGREEN
+- ADANIENSOL
+- WELCORP
+- ATGL
 avoid_bear_regimes: true
 entry:
   direction: long
