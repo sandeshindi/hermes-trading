@@ -50,8 +50,11 @@ async def handle_remove_asset(request):
             for line in trades_path.read_text().splitlines():
                 if line.strip():
                     t = json.loads(line)
+                    a = t.get("asset")
                     if t.get("status") == "open":
-                        open_assets.add(t.get("asset"))
+                        open_assets.add(a)
+                    elif t.get("status") == "closed" and a in open_assets:
+                        open_assets.remove(a)
                         
         if asset not in open_assets:
             goal = yaml.safe_load(goal_path.read_text()) if goal_path.exists() else {}
@@ -133,7 +136,13 @@ async def handle_dashboard(request):
             if line.strip():
                 hypotheses.append(json.loads(line))
 
-    open_assets = {t.get("asset") for t in trades if t.get("status") == "open"}
+    open_assets = set()
+    for t in trades:
+        a = t.get("asset")
+        if t.get("status") == "open":
+            open_assets.add(a)
+        elif t.get("status") == "closed" and a in open_assets:
+            open_assets.remove(a)
     asset_rows = []
     for asset in goal.get("assets", []):
         is_open = asset in open_assets

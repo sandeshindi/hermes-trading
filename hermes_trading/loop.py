@@ -254,8 +254,11 @@ async def trading_loop(assets, goal):
             for line in f:
                 if line.strip():
                     t = json.loads(line)
+                    asset = t.get("asset")
                     if t.get("status") == "open":
-                        open_positions[t["asset"]] = t
+                        open_positions[asset] = t
+                    elif t.get("status") == "closed" and asset in open_positions:
+                        del open_positions[asset]
 
     while True:
         now = datetime.now(IST)
