@@ -8,6 +8,67 @@ import pytz
 
 IST = pytz.timezone("Asia/Kolkata")
 
+async def handle_add_asset(request):
+    from hermes_trading.config import get_state_dir
+    state_path = get_state_dir()
+    goal_path = state_path / "goal.yaml"
+    strategy_path = state_path / "strategy.yaml"
+    
+    data = await request.post()
+    asset = data.get("asset", "").strip().upper()
+    
+    if asset:
+        goal = yaml.safe_load(goal_path.read_text()) if goal_path.exists() else {}
+        strategy = yaml.safe_load(strategy_path.read_text()) if strategy_path.exists() else {}
+        
+        assets = goal.get("assets", [])
+        if asset not in assets:
+            assets.append(asset)
+            goal["assets"] = assets
+            strategy["assets"] = assets
+            
+            goal_path.write_text(yaml.safe_dump(goal, sort_keys=False))
+            strategy_path.write_text(yaml.safe_dump(strategy, sort_keys=False))
+            print(f">>> [Dashboard] Added asset: {asset}")
+            
+    raise web.HTTPFound('/')
+
+async def handle_remove_asset(request):
+    from hermes_trading.config import get_state_dir
+    state_path = get_state_dir()
+    goal_path = state_path / "goal.yaml"
+    strategy_path = state_path / "strategy.yaml"
+    trades_path = state_path / "trades.jsonl"
+    
+    data = await request.post()
+    asset = data.get("asset", "").strip().upper()
+    
+    if asset:
+        # Check if asset is in open trades
+        open_assets = set()
+        if trades_path.exists():
+            for line in trades_path.read_text().splitlines():
+                if line.strip():
+                    t = json.loads(line)
+                    if t.get("status") == "open":
+                        open_assets.add(t.get("asset"))
+                        
+        if asset not in open_assets:
+            goal = yaml.safe_load(goal_path.read_text()) if goal_path.exists() else {}
+            strategy = yaml.safe_load(strategy_path.read_text()) if strategy_path.exists() else {}
+            
+            assets = goal.get("assets", [])
+            if asset in assets:
+                assets.remove(asset)
+                goal["assets"] = assets
+                strategy["assets"] = assets
+                
+                goal_path.write_text(yaml.safe_dump(goal, sort_keys=False))
+                strategy_path.write_text(yaml.safe_dump(strategy, sort_keys=False))
+                print(f">>> [Dashboard] Removed asset: {asset}")
+                
+    raise web.HTTPFound('/')
+
 async def handle_dashboard(request):
     from hermes_trading.config import get_state_dir
     state_path = get_state_dir()
@@ -71,6 +132,27 @@ async def handle_dashboard(request):
         for line in hypotheses_path.read_text().splitlines():
             if line.strip():
                 hypotheses.append(json.loads(line))
+
+    open_assets = {t.get("asset") for t in trades if t.get("status") == "open"}
+    asset_rows = []
+    for asset in goal.get("assets", []):
+        is_open = asset in open_assets
+        if is_open:
+            action_html = '<span style="color: #e65100; font-size: 0.85em; font-weight: bold; background: #ffe0b2; padding: 4px 8px; border-radius: 4px;">⚠️ ACTIVE POSITION</span>'
+        else:
+            action_html = f"""
+            <form action="/remove_asset" method="post" style="display:inline;">
+                <input type="hidden" name="asset" value="{asset}">
+                <button type="submit" style="background:#c62828; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.85em; font-weight:bold; transition: background 0.2s;" onmouseover="this.style.background=\'#b71c1c\'" onmouseout="this.style.background=\'#c62828\'">Remove</button>
+            </form>
+            """
+        asset_rows.append(f"""
+        <tr>
+            <td style="font-weight:bold; color:#ffca28; font-size:1.1em;">{asset}</td>
+            <td>{action_html}</td>
+        </tr>
+        """)
+    asset_list_html = "".join(asset_rows) if asset_rows else "<tr><td colspan='2' style='text-align:center; color:#777;'>No assets configured</td></tr>"
 
     # Calculate metrics
     current_capital = goal.get("current_capital_inr", 0)
@@ -158,6 +240,32 @@ async def handle_dashboard(request):
             </div>
         </div>
 
+        <div class="card" style="display: flex; gap: 30px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+                <h2>Current Assets Basket</h2>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th>Asset Symbol (NSE)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {asset_list_html}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="flex: 1; min-width: 300px; border-left: 1px solid #ddd; padding-left: 30px;">
+                <h2>Add New Asset</h2>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">Add a new NSE stock ticker to the paper trading asset list. Only letters and standard NSE symbols are allowed.</p>
+                <form action="/add_asset" method="post" style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" name="asset" placeholder="e.g. TCS, SBIN, TATAMOTORS" required style="padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; flex: 1; text-transform: uppercase;">
+                    <button type="submit" style="background: #2e7d32; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background=\'#1b5e20\'" onmouseout="this.style.background=\'#2e7d32\'">Add Asset</button>
+                </form>
+            </div>
+        </div>
+
         <div class="card">
             <h2>Recent Trades</h2>
             <table>
@@ -204,7 +312,11 @@ async def handle_dashboard(request):
 async def start_dashboard():
     import os
     app = web.Application()
-    app.add_routes([web.get('/', handle_dashboard)])
+    app.add_routes([
+        web.get('/', handle_dashboard),
+        web.post('/add_asset', handle_add_asset),
+        web.post('/remove_asset', handle_remove_asset)
+    ])
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.getenv("PORT", 8080))

@@ -261,6 +261,7 @@ async def trading_loop(assets, goal):
         now = datetime.now(IST)
         # Reload goal to get latest capital
         goal = load_yaml(goal_path)
+        current_assets = goal.get("assets", assets)
         market_open = is_market_open(goal.get("market_hours", "09:15-15:30 IST"))
         
         heartbeat = {
@@ -287,7 +288,7 @@ async def trading_loop(assets, goal):
                 except Exception as e:
                     print(f"Error fetching macro data: {e}")
             
-            for asset in assets:
+            for asset in current_assets:
                 market_data = await get_market_data(asset)
                 if market_data:
                     price = market_data["price"]
