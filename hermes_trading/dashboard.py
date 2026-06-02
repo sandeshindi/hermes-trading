@@ -82,7 +82,9 @@ async def handle_dashboard(request):
         try:
             import subprocess
             import sys
-            subprocess.run([sys.executable, "-m", "hermes_trading.reflect", "--fallback"])
+            import os
+            reflect_mode = "--hermes" if os.getenv("HERMES_REFLECT_MODE") == "hermes" else "--fallback"
+            subprocess.run([sys.executable, "-m", "hermes_trading.reflect", reflect_mode])
             raise web.HTTPFound('/')
         except web.HTTPFound:
             raise

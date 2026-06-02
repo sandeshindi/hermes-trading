@@ -422,7 +422,9 @@ async def trading_loop(assets, goal):
                                     print(f">>> [Auto-Reflection] Closed trades count ({closed_count}) is a multiple of {reflection_cadence}. Launching strategy updates...")
                                     import subprocess
                                     import sys
-                                    subprocess.Popen([sys.executable, "-m", "hermes_trading.reflect", "--fallback"])
+                                    import os
+                                    reflect_mode = "--hermes" if os.getenv("HERMES_REFLECT_MODE") == "hermes" else "--fallback"
+                                    subprocess.Popen([sys.executable, "-m", "hermes_trading.reflect", reflect_mode])
                             except Exception as re:
                                 print(f"Error checking/triggering automatic reflection: {re}")
                             
