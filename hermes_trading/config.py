@@ -21,11 +21,29 @@ def get_state_dir() -> Path:
             dest = active_dir / template
             src = template_dir / template
             # Restore template if missing in active_dir
-            if src.exists() and not dest.exists():
-                try:
-                    dest.write_text(src.read_text())
-                    print(f"Successfully initialized {template} in {active_dir}")
-                except Exception as e:
-                    print(f"Error copying template {template} to {active_dir}: {e}")
+            if src.exists():
+                if not dest.exists():
+                    try:
+                        dest.write_text(src.read_text())
+                        print(f"Successfully initialized {template} in {active_dir}")
+                    except Exception as e:
+                        print(f"Error copying template {template} to {active_dir}: {e}")
+                elif template == "strategy.yaml":
+                    # Automatically migrate missing keys from the template to the active volume strategy
+                    try:
+                        import yaml
+                        src_yaml = yaml.safe_load(src.read_text())
+                        dest_yaml = yaml.safe_load(dest.read_text())
+                        migrated = False
+                        if isinstance(src_yaml, dict) and isinstance(dest_yaml, dict):
+                            for k, v in src_yaml.items():
+                                if k not in dest_yaml:
+                                    dest_yaml[k] = v
+                                    migrated = True
+                            if migrated:
+                                dest.write_text(yaml.safe_dump(dest_yaml, sort_keys=False))
+                                print(f"Successfully migrated new default keys to active strategy.yaml in volume")
+                    except Exception as e:
+                        print(f"Error migrating strategy template: {e}")
                     
     return active_dir
