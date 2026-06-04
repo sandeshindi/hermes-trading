@@ -19,3 +19,5 @@ position_size_r: 0.5
 stop_loss_mode: atr
 stop_loss_pct: 2.0
 version: '07'
+max_active_positions: 4
+

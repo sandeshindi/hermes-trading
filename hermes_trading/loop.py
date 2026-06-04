@@ -535,8 +535,13 @@ async def trading_loop(assets, goal):
                             macro_condition = macro_data.get("market_sentiment") != "bear"
                             
                         if tech_condition and news_condition and macro_condition:
+                            max_active = strategy.get("max_active_positions", 3)
+                            if len(open_positions) >= max_active:
+                                print(f"[{now.strftime('%H:%M:%S')}] Signal triggered for {asset} but skipped: max active positions slot capacity ({max_active}) reached.")
+                                continue
+                            
                             capital = goal.get("current_capital_inr", 50000)
-                            asset_capital = capital / len(assets)
+                            asset_capital = capital / max_active
                             investment = asset_capital * position_size_r
                             qty = math.floor(investment / price)
                             
