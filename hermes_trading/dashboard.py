@@ -72,6 +72,20 @@ async def handle_remove_asset(request):
                 
     raise web.HTTPFound('/')
 
+async def handle_strategy_file(request):
+    from hermes_trading.config import get_state_dir
+    strategy_path = get_state_dir() / "strategy.yaml"
+    if strategy_path.exists():
+        return web.Response(text=strategy_path.read_text(), content_type='text/yaml')
+    return web.Response(text="strategy.yaml not found", status=404)
+
+async def handle_goal_file(request):
+    from hermes_trading.config import get_state_dir
+    goal_path = get_state_dir() / "goal.yaml"
+    if goal_path.exists():
+        return web.Response(text=goal_path.read_text(), content_type='text/yaml')
+    return web.Response(text="goal.yaml not found", status=404)
+
 async def handle_dashboard(request):
     from hermes_trading.config import get_state_dir
     state_path = get_state_dir()
@@ -221,6 +235,10 @@ async def handle_dashboard(request):
             <div>
                 <h1>{", ".join(goal.get('assets', []))} <span style="font-size: 0.5em; background: #eee; padding: 4px 8px; border-radius: 4px;">v{strategy.get('version', '01')}</span></h1>
                 <p>Status: <span class="status-{heartbeat.get('market_status', 'closed')}">{heartbeat.get('market_status', 'Unknown').upper()}</span> | Last Heartbeat: {heartbeat.get('timestamp', 'N/A')}</p>
+                <p style="margin-top: 10px; font-size: 0.95em;">
+                    <a href="/strategy" target="_blank" style="color: #0288d1; font-weight: bold; text-decoration: none; margin-right: 15px; border-bottom: 1px dashed #0288d1;">📄 View Active Strategy</a>
+                    <a href="/goal" target="_blank" style="color: #0288d1; font-weight: bold; text-decoration: none; border-bottom: 1px dashed #0288d1;">🎯 View Active Goal</a>
+                </p>
             </div>
             <div>
                 <span style="background: #e1f5fe; color: #01579b; padding: 8px 16px; border-radius: 20px; font-weight: bold;">PAPER MODE</span>
@@ -325,6 +343,8 @@ async def start_dashboard():
     app = web.Application()
     app.add_routes([
         web.get('/', handle_dashboard),
+        web.get('/strategy', handle_strategy_file),
+        web.get('/goal', handle_goal_file),
         web.post('/add_asset', handle_add_asset),
         web.post('/remove_asset', handle_remove_asset)
     ])
