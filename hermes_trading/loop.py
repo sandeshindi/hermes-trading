@@ -471,18 +471,18 @@ async def trading_loop(assets, goal):
                                 except Exception:
                                     pass
                             else:
-                                # 2. 5-Minute AI Cooldown: Avoid spamming the model every minute for the same asset
+                                # 2. 15-Minute AI Cooldown: Avoid spamming the model every minute for the same asset
                                 cooldown_key = f"{asset}_entry"
                                 last_query_time = last_ai_queries.get(cooldown_key)
                                 
                                 # 3. Global AI Cooldown: Stagger queries globally by at least 30s to stay safely under RPM limits
                                 time_since_last_global = (now - last_global_ai_query_time).total_seconds() if last_global_ai_query_time else 9999.0
                                 
-                                if last_query_time and (now - last_query_time).total_seconds() < 300:
-                                    print(f"[{now.strftime('%H:%M:%S')}] {asset} | AI Cooldown: Asked less than 5m ago. Skipping AI query.")
+                                if last_query_time and (now - last_query_time).total_seconds() < 900:
+                                    print(f"[{now.strftime('%H:%M:%S')}] {asset} | AI Cooldown: Asked less than 15m ago. Skipping AI query.")
                                     tech_condition = False
                                     latest_prices[asset]["ai_decision"] = "COOLDOWN"
-                                    latest_prices[asset]["ai_reason"] = "Individual asset cooldown: asked AI less than 5m ago."
+                                    latest_prices[asset]["ai_reason"] = "Individual asset cooldown: asked AI less than 15m ago."
                                     try:
                                         with open(state_path / "prices.json", "w") as pf:
                                             json.dump(latest_prices, pf)
