@@ -20,4 +20,7 @@ stop_loss_mode: atr
 stop_loss_pct: 2.0
 version: '07'
 max_active_positions: 4
+enable_rotation: true
+rotation_score_diff: 3
+
 

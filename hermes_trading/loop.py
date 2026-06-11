@@ -123,10 +123,11 @@ Constraints:
 
 Respond strictly in valid JSON format. Do not wrap in backticks or markdown code block formats.
 The JSON must follow this schema:
-{{
+{
   "decision": "BUY" | "SELL" | "HOLD",
+  "conviction_score": 1-10, // Integer conviction rating (1 is lowest conviction, 10 is absolute highest conviction)
   "reason": "Provide a concise explanation of why this decision was chosen."
-}}
+}
 """
 
     if provider == "google":
@@ -292,6 +293,7 @@ async def trading_loop(assets, goal):
                     print(f"Error fetching macro data: {e}")
             
             for asset in current_assets:
+                conviction_score = 5
                 market_data = await get_market_data(asset)
                 if market_data:
                     price = market_data["price"]
@@ -505,7 +507,11 @@ async def trading_loop(assets, goal):
                                     last_global_ai_query_time = now
                                     decision = ai_decision.get("decision", "HOLD")
                                     reason = ai_decision.get("reason", "No reason provided.")
-                                    print(f">>> [Gemini AI Decision] {asset}: {decision} | Reason: {reason}")
+                                    try:
+                                        conviction_score = int(ai_decision.get("conviction_score", 5))
+                                    except Exception:
+                                        conviction_score = 5
+                                    print(f">>> [Gemini AI Decision] {asset}: {decision} (Score: {conviction_score}) | Reason: {reason}")
                                     tech_condition = (decision == "BUY")
                                     
                                     # Check if rate limited (status 429)
@@ -537,8 +543,54 @@ async def trading_loop(assets, goal):
                         if tech_condition and news_condition and macro_condition:
                             max_active = strategy.get("max_active_positions", 3)
                             if len(open_positions) >= max_active:
-                                print(f"[{now.strftime('%H:%M:%S')}] Signal triggered for {asset} but skipped: max active positions slot capacity ({max_active}) reached.")
-                                continue
+                                enable_rotation = strategy.get("enable_rotation", False)
+                                rotation_score_diff = strategy.get("rotation_score_diff", 3)
+                                
+                                rotated = False
+                                if enable_rotation and len(open_positions) > 0:
+                                    # Find the open position with the lowest conviction score
+                                    lowest_asset = min(
+                                        open_positions.keys(),
+                                        key=lambda a: open_positions[a].get("conviction_score", 5)
+                                    )
+                                    lowest_score = open_positions[lowest_asset].get("conviction_score", 5)
+                                    
+                                    # If the new asset conviction score is better by the required threshold
+                                    if conviction_score - lowest_score >= rotation_score_diff:
+                                        print(f">>> [Rotation] {asset} (Score: {conviction_score}) is better than held {lowest_asset} (Score: {lowest_score}) by >= {rotation_score_diff}. Swapping...")
+                                        
+                                        # Fetch market price of the asset being sold/closed
+                                        lowest_market_data = await get_market_data(lowest_asset)
+                                        if lowest_market_data:
+                                            low_price = lowest_market_data["price"]
+                                            low_pos = open_positions[lowest_asset]
+                                            qty_to_sell = low_pos["quantity"]
+                                            entry_p = low_pos["entry_price"]
+                                            pnl = (low_price - entry_p) * qty_to_sell
+                                            
+                                            # Close position details
+                                            low_pos["status"] = "closed"
+                                            low_pos["exit_price"] = low_price
+                                            low_pos["exit_time"] = now.strftime('%Y-%m-%d %H:%M:%S')
+                                            low_pos["pnl_inr"] = round(pnl, 2)
+                                            
+                                            # Update Capital
+                                            goal["current_capital_inr"] += pnl
+                                            save_yaml(goal_path, goal)
+                                            
+                                            # Log closed trade to trades file
+                                            with open(trades_path, "a") as f:
+                                                f.write(json.dumps(low_pos) + "\n")
+                                                
+                                            del open_positions[lowest_asset]
+                                            print(f">>> ROTATED OUT {lowest_asset} @ Rs.{low_price:.2f} | PnL: Rs.{pnl:.2f}")
+                                            rotated = True
+                                        else:
+                                            print(f"Failed to fetch price for {lowest_asset} during swap. Aborting rotation.")
+                                            
+                                if not rotated:
+                                    print(f"[{now.strftime('%H:%M:%S')}] Signal triggered for {asset} but skipped: max active positions slot capacity ({max_active}) reached and rotation not applicable.")
+                                    continue
                             
                             capital = goal.get("current_capital_inr", 50000)
                             asset_capital = capital / max_active
@@ -552,10 +604,11 @@ async def trading_loop(assets, goal):
                                     "status": "open",
                                     "entry_price": price,
                                     "quantity": qty,
-                                    "entry_time": now.strftime('%Y-%m-%d %H:%M:%S')
+                                    "entry_time": now.strftime('%Y-%m-%d %H:%M:%S'),
+                                    "conviction_score": conviction_score
                                 }
                                 open_positions[asset] = new_trade
-                                print(f">>> OPENED {asset} Trade: {qty} shares @ Rs.{price:.2f}")
+                                print(f">>> OPENED {asset} Trade: {qty} shares @ Rs.{price:.2f} | Conviction: {conviction_score}")
                                 
                                 # Log to trades
                                 with open(trades_path, "a") as f:
