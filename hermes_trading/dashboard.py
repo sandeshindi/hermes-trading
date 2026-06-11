@@ -184,6 +184,24 @@ async def handle_dashboard(request):
     starting_capital = goal.get("starting_capital_inr", 1)
     return_pct = ((current_capital - starting_capital) / starting_capital) * 100
     
+    # Calculate Unrealized P&L from active positions and live price feed
+    active_positions = {}
+    for t in trades:
+        asset = t.get("asset")
+        if t.get("status") == "open":
+            active_positions[asset] = t
+        elif t.get("status") == "closed" and asset in active_positions:
+            del active_positions[asset]
+            
+    unrealized_pnl = 0.0
+    for asset, pos in active_positions.items():
+        live_price = prices.get(asset, {}).get("price")
+        if live_price is not None:
+            unrealized_pnl += (live_price - pos["entry_price"]) * pos["quantity"]
+            
+    live_portfolio_value = current_capital + unrealized_pnl
+    live_return_pct = ((live_portfolio_value - starting_capital) / starting_capital) * 100
+    
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -246,10 +264,20 @@ async def handle_dashboard(request):
         </div>
 
         <div class="metric-grid">
+            <div class="card metric" style="border: 2px solid #2e7d32; background: #e8f5e9;">
+                <h3 style="color: #2e7d32; font-weight: bold;">Live Portfolio Value</h3>
+                <p style="color: #1b5e20; font-size: 1.6em;">₹{live_portfolio_value:,.2f}</p>
+                <span style="color: {'green' if live_return_pct >= 0 else 'red'}; font-weight: bold;">{live_return_pct:+.2f}% (Live)</span>
+            </div>
             <div class="card metric">
-                <h3>Current Capital</h3>
+                <h3>Realized Capital</h3>
                 <p>₹{current_capital:,.2f}</p>
-                <span style="color: {'green' if return_pct >= 0 else 'red'}">{return_pct:+.2f}%</span>
+                <span style="color: {'green' if return_pct >= 0 else 'red'}">{return_pct:+.2f}% (Realized)</span>
+            </div>
+            <div class="card metric">
+                <h3>Unrealized P&L</h3>
+                <p style="color: {'green' if unrealized_pnl >= 0 else 'red'}">₹{unrealized_pnl:+,.2f}</p>
+                <span style="color: #888; font-size: 0.85em;">Open positions swing</span>
             </div>
             <div class="card metric">
                 <h3>Starting Capital</h3>
@@ -262,10 +290,6 @@ async def handle_dashboard(request):
             <div class="card metric">
                 <h3>Max Drawdown</h3>
                 <p>{goal.get('max_drawdown', 0)*100}%</p>
-            </div>
-            <div class="card metric">
-                <h3>Min Sharpe</h3>
-                <p>{goal.get('min_sharpe', 0)}</p>
             </div>
         </div>
 
