@@ -123,11 +123,11 @@ Constraints:
 
 Respond strictly in valid JSON format. Do not wrap in backticks or markdown code block formats.
 The JSON must follow this schema:
-{
+{{
   "decision": "BUY" | "SELL" | "HOLD",
   "conviction_score": 1-10, // Integer conviction rating (1 is lowest conviction, 10 is absolute highest conviction)
   "reason": "Provide a concise explanation of why this decision was chosen."
-}
+}}
 """
 
     if provider == "google":
