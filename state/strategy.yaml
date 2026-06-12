@@ -1,12 +1,15 @@
 assets:
 - RELIANCE
-- INFY
-- IRFC
 - BHEL
 - ADANIGREEN
 - ADANIENSOL
 - WELCORP
 - ATGL
+- SUZLON
+- TEJASNET
+- MEESHO
+- HDFCBANK
+- APOLLO
 atr_multiplier: 2.2
 avoid_bear_regimes: true
 entry:

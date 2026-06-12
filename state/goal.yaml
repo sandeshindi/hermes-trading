@@ -1,12 +1,15 @@
 assets:
 - RELIANCE
-- INFY
-- IRFC
 - BHEL
 - ADANIGREEN
 - ADANIENSOL
 - WELCORP
 - ATGL
+- SUZLON
+- TEJASNET
+- MEESHO
+- HDFCBANK
+- APOLLO
 currency: INR
 current_capital_inr: 50000
 exchange: NSE
