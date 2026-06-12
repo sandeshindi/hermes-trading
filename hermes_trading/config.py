@@ -29,21 +29,30 @@ def get_state_dir() -> Path:
                     except Exception as e:
                         print(f"Error copying template {template} to {active_dir}: {e}")
                 elif template == "strategy.yaml":
-                    # Automatically migrate missing keys from the template to the active volume strategy
-                    try:
-                        import yaml
-                        src_yaml = yaml.safe_load(src.read_text())
-                        dest_yaml = yaml.safe_load(dest.read_text())
-                        migrated = False
-                        if isinstance(src_yaml, dict) and isinstance(dest_yaml, dict):
-                            for k, v in src_yaml.items():
-                                if k not in dest_yaml:
-                                    dest_yaml[k] = v
-                                    migrated = True
-                            if migrated:
-                                dest.write_text(yaml.safe_dump(dest_yaml, sort_keys=False))
-                                print(f"Successfully migrated new default keys to active strategy.yaml in volume")
-                    except Exception as e:
-                        print(f"Error migrating strategy template: {e}")
+                    # Check for force reset env var to overwrite volume value from Git
+                    import os
+                    if os.getenv("FORCE_OVERWRITE_STRATEGY") == "true":
+                        try:
+                            dest.write_text(src.read_text())
+                            print("FORCE_OVERWRITE_STRATEGY is active. Overwrote strategy.yaml in volume with git template.")
+                        except Exception as e:
+                            print(f"Error force overwriting strategy: {e}")
+                    else:
+                        # Automatically migrate missing keys from the template to the active volume strategy
+                        try:
+                            import yaml
+                            src_yaml = yaml.safe_load(src.read_text())
+                            dest_yaml = yaml.safe_load(dest.read_text())
+                            migrated = False
+                            if isinstance(src_yaml, dict) and isinstance(dest_yaml, dict):
+                                for k, v in src_yaml.items():
+                                    if k not in dest_yaml:
+                                        dest_yaml[k] = v
+                                        migrated = True
+                                if migrated:
+                                    dest.write_text(yaml.safe_dump(dest_yaml, sort_keys=False))
+                                    print(f"Successfully migrated new default keys to active strategy.yaml in volume")
+                        except Exception as e:
+                            print(f"Error migrating strategy template: {e}")
                     
     return active_dir
