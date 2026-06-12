@@ -11,6 +11,32 @@ def get_state_dir() -> Path:
     active_dir.mkdir(exist_ok=True)
     (active_dir / "history").mkdir(exist_ok=True)
     
+    # Check for force reset env var to wipe history
+    import os
+    if os.getenv("RESET_TRADING_HISTORY") == "true":
+        for file_to_del in ["trades.jsonl", "hypotheses.jsonl", "prices.json", "heartbeat.json"]:
+            fp = active_dir / file_to_del
+            if fp.exists():
+                try:
+                    fp.unlink()
+                    print(f"RESET_TRADING_HISTORY is active. Deleted {file_to_del} in volume.")
+                except Exception as e:
+                    print(f"Error deleting {file_to_del}: {e}")
+                    
+        # Reset goal capital
+        goal_path = active_dir / "goal.yaml"
+        if goal_path.exists():
+            try:
+                import yaml
+                goal_data = yaml.safe_load(goal_path.read_text())
+                if isinstance(goal_data, dict):
+                    start_cap = goal_data.get("starting_capital_inr", 50000)
+                    goal_data["current_capital_inr"] = start_cap
+                    goal_path.write_text(yaml.safe_dump(goal_data, sort_keys=False))
+                    print(f"RESET_TRADING_HISTORY is active. Reset current_capital_inr to {start_cap} in goal.yaml")
+            except Exception as e:
+                print(f"Error resetting goal capital: {e}")
+    
     # 2. Check for backup templates in our safe build-time templates folder
     template_dir = Path("/app/state_templates")
     if not template_dir.exists():
