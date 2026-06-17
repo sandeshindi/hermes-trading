@@ -126,6 +126,8 @@ The JSON must follow this schema:
 {{
   "decision": "BUY" | "SELL" | "HOLD",
   "conviction_score": 1-10, // Integer conviction rating (1 is lowest conviction, 10 is absolute highest conviction)
+  "target_price": float,    // Target take-profit price based on chart resistance/pattern (for BUY decisions only; set to null/0 otherwise)
+  "stop_loss_price": float,  // Protective stop-loss price based on chart support/swing lows (for BUY decisions only; set to null/0 otherwise)
   "reason": "Provide a concise explanation of why this decision was chosen."
 }}
 """
@@ -294,6 +296,8 @@ async def trading_loop(assets, goal):
             
             for asset in current_assets:
                 conviction_score = 5
+                ai_tp = None
+                ai_sl = None
                 market_data = await get_market_data(asset)
                 if market_data:
                     price = market_data["price"]
@@ -382,6 +386,15 @@ async def trading_loop(assets, goal):
                             multiplier = strategy.get("atr_multiplier", 2.0)
                             sl_price = entry_price - (multiplier * atr_val)
                             tp_price = entry_price + (multiplier * 2.0 * atr_val)
+                        elif sl_mode == "ai":
+                            sl_price = pos.get("stop_loss_price")
+                            tp_price = pos.get("target_price")
+                            
+                            # Fallback if somehow not populated
+                            if sl_price is None or tp_price is None:
+                                multiplier = strategy.get("atr_multiplier", 2.0)
+                                sl_price = entry_price - (multiplier * atr_val) if sl_price is None else sl_price
+                                tp_price = entry_price + (multiplier * 2.0 * atr_val) if tp_price is None else tp_price
                         else:
                             sl_price = entry_price * (1 - (stop_loss_pct / 100))
                             tp_price = entry_price * (1 + (stop_loss_pct * 2 / 100))
@@ -511,7 +524,17 @@ async def trading_loop(assets, goal):
                                         conviction_score = int(ai_decision.get("conviction_score", 5))
                                     except Exception:
                                         conviction_score = 5
-                                    print(f">>> [Gemini AI Decision] {asset}: {decision} (Score: {conviction_score}) | Reason: {reason}")
+                                    try:
+                                        ai_tp_val = ai_decision.get("target_price")
+                                        ai_tp = float(ai_tp_val) if ai_tp_val is not None else None
+                                    except Exception:
+                                        ai_tp = None
+                                    try:
+                                        ai_sl_val = ai_decision.get("stop_loss_price")
+                                        ai_sl = float(ai_sl_val) if ai_sl_val is not None else None
+                                    except Exception:
+                                        ai_sl = None
+                                    print(f">>> [Gemini AI Decision] {asset}: {decision} (Score: {conviction_score}, TP: {ai_tp}, SL: {ai_sl}) | Reason: {reason}")
                                     tech_condition = (decision == "BUY")
                                     
                                     # Check if rate limited (status 429)
@@ -598,6 +621,44 @@ async def trading_loop(assets, goal):
                             qty = math.floor(investment / price)
                             
                             if qty > 0:
+                                # Apply Dynamic/Hybrid stop-loss & target calculations
+                                sl_mode = strategy.get("stop_loss_mode", "fixed")
+                                stop_loss_pct = strategy.get("stop_loss_pct", 2.0)
+                                multiplier = strategy.get("atr_multiplier", 2.0)
+                                
+                                # Default math levels for fallback
+                                default_sl_dist = atr_val * multiplier if sl_mode == "atr" else price * (stop_loss_pct / 100)
+                                default_tp_dist = default_sl_dist * 2.0
+                                
+                                final_sl = price - default_sl_dist
+                                final_tp = price + default_tp_dist
+                                
+                                if sl_mode == "ai":
+                                    # Safety Limits: Max Stop-loss 2.5x ATR, Max Take-profit 4.0x ATR
+                                    max_sl_dist = 2.5 * atr_val
+                                    max_tp_dist = 4.0 * atr_val
+                                    
+                                    # Validate and clean AI values
+                                    if ai_sl is not None and ai_sl < price and ai_sl > 0:
+                                        # Tighten if AI stop is too wide/risky
+                                        if (price - ai_sl) > max_sl_dist:
+                                            final_sl = price - max_sl_dist
+                                            print(f"[{asset}] AI Stop Loss (Rs.{ai_sl:.2f}) too wide. Tightened to safety limit (Rs.{final_sl:.2f}).")
+                                        else:
+                                            final_sl = ai_sl
+                                    else:
+                                        print(f"[{asset}] Invalid/missing AI Stop Loss. Using default ATR stop.")
+                                        
+                                    if ai_tp is not None and ai_tp > price:
+                                        # Tighten if AI target is too greedy
+                                        if (ai_tp - price) > max_tp_dist:
+                                            final_tp = price + max_tp_dist
+                                            print(f"[{asset}] AI Target (Rs.{ai_tp:.2f}) too greedy. Tightened to safety limit (Rs.{final_tp:.2f}).")
+                                        else:
+                                            final_tp = ai_tp
+                                    else:
+                                        print(f"[{asset}] Invalid/missing AI Target. Using default ATR target.")
+                                
                                 new_trade = {
                                     "asset": asset,
                                     "side": "BUY",
@@ -605,10 +666,12 @@ async def trading_loop(assets, goal):
                                     "entry_price": price,
                                     "quantity": qty,
                                     "entry_time": now.strftime('%Y-%m-%d %H:%M:%S'),
-                                    "conviction_score": conviction_score
+                                    "conviction_score": conviction_score,
+                                    "target_price": round(final_tp, 2),
+                                    "stop_loss_price": round(final_sl, 2)
                                 }
                                 open_positions[asset] = new_trade
-                                print(f">>> OPENED {asset} Trade: {qty} shares @ Rs.{price:.2f} | Conviction: {conviction_score}")
+                                print(f">>> OPENED {asset} Trade: {qty} shares @ Rs.{price:.2f} | Conviction: {conviction_score} | Target: Rs.{final_tp:.2f} | Stop: Rs.{final_sl:.2f}")
                                 
                                 # Log to trades
                                 with open(trades_path, "a") as f:
