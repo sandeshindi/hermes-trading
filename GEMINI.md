@@ -158,7 +158,7 @@ Create the directory tree at `~/hermes-trading`:
 
 Generate real, runnable code for each file (no placeholders). Contracts:
 
-**`run.py`** — entrypoint. Automatically loads environment variables (such as API keys) from `.env` using a built-in, lightweight, and robust `.env` parser to avoid external dependencies. Parses `--assets` from `goal.yaml`. Checks current IST time against `market_hours` in `goal.yaml` — if outside NSE hours (09:15–15:30 IST Mon–Fri, excluding NSE holidays), sleeps and waits. Starts the loop when market opens.
+**`run.py`** — entrypoint. Parses `--assets` from goal.yaml. Checks current IST time against `market_hours` in goal.yaml — if outside NSE hours (09:15–15:30 IST Mon–Fri, excluding NSE holidays), sleeps and waits. Starts the loop when market opens.
 
 **`loop.py`** — async loop. Every minute during NSE market hours: iterate over all `assets` from `goal.yaml`. For each asset:
 - Pull live price and compute technical indicators: RSI (14-period), SMAs (9 and 21), MACD and Signal lines, Bollinger Bands, and ATR (14-period Average True Range).
@@ -168,24 +168,26 @@ Generate real, runnable code for each file (no placeholders). Contracts:
   * `indicator: sma_cross`: Golden cross triggers if SMA9 > SMA21.
   * `indicator: macd`: triggers if MACD > Signal.
   * `indicator: bollinger`: triggers if price <= Lower Bollinger Band.
-  * `indicator: ai`: calls the live Google Gemini, Anthropic Claude, or OpenAI model (based on `HERMES_PROVIDER` and `HERMES_MODEL` in `.env`) to make an AI-driven BUY/HOLD decision based on full technical, corporate fundamentals, live news sentiment, and macro index regime. Includes intelligent API Quota Protection: a 5-minute cooldown per asset, a global 30-second AI query cooldown across all assets to prevent bursting rate limits, and technical pre-filtering (skips AI queries entirely on overbought stocks with RSI >= 55).
-- Support dynamic, volatility-adjusted ATR exit modes:
+  * `indicator: ai`: calls the live Google Gemini, Anthropic Claude, or OpenAI model (based on `HERMES_PROVIDER` and `HERMES_MODEL` in `.env`) to make an AI-driven BUY/HOLD decision based on full technical, corporate fundamentals, live news sentiment, and macro index regime. Includes intelligent API Quota Protection: a 15-minute cooldown per asset and technical pre-filtering (skips AI queries entirely on overbought stocks with RSI >= 55).
+- Support dynamic, volatility-adjusted exits:
+  * `stop_loss_mode: ai`: Exit if price hits AI-predicted `target_price` (take-profit) or `stop_loss_price` (stop-loss), bound within a 2.5x ATR stop safety rail and 4.0x ATR target safety rail.
   * `stop_loss_mode: fixed`: Exit if price drops below fixed stop_loss_pct.
   * `stop_loss_mode: atr`: Exit if price drops below `entry_price - (multiplier * ATR)`.
 - Log P&L in INR and update `goal.yaml` current capital compounding after every closed trade. Only one position per asset at any time.
 
 Paper trade entry/exit logic:
 - **Entry price**: the live price at the moment the entry condition first fires (1-minute poll — not tick-level)
-- **Quantity**: `floor((current_capital_inr / len(assets)) × position_size_r ÷ entry_price)` — capital is split evenly across assets, and positions scale proportionally.
-- **Exit conditions**: stop loss (fixed % drop or dynamic ATR drop) or strategy signal reversal
+- **Quantity**: `floor((current_capital_inr / max_active_positions) × position_size_r ÷ entry_price)` — capital is split into active slots rather than basket size.
+- **Exit conditions**: stop loss (dynamic AI target/stop, fixed %, or dynamic ATR) or strategy signal reversal
+- **Position Rotation**: If slots are full and `enable_rotation` is active, check if a new stock BUY decision conviction score exceeds the lowest active position's conviction score by `rotation_score_diff`. If so, automatically close/sell the low-conviction asset and swap to the new position.
 - **P&L**: `(exit_price - entry_price) × quantity` — recorded in INR
 - **Capital update**: after every closed trade, `current_capital_inr += pnl_inr` in `goal.yaml`
 - **Slippage**: not modelled — fills assume exact quoted price. Results will be slightly optimistic vs real trading; this is expected and fine for strategy comparison purposes.
 - **One position per asset**: the loop skips new entry signals for an asset while it already has an open position.
 
 **`reflect.py`** — the reflection cycle, with TWO modes:
-- **`--fallback`** — deterministic rule, used in Phase 5 before Hermes is installed. If realised return < target → loosen `entry.threshold` by 2. If drawdown > max → tighten `stop_loss_pct` by 0.2. Always changes exactly ONE variable. Bumps version, saves prior to `state/history/v{NNNN}.yaml`, appends to `state/hypotheses.jsonl`.
-- **`--hermes`** — the production mode (Phase 7). Reads the latest 25 trades and current strategy, formats them as a prompt, calls `hermes` as a subprocess, parses the hypothesis, applies it.
+- **`--fallback`** — deterministic rule, used in Phase 5 before Hermes is installed. Adjusts active features or stop loss parameters. Always changes exactly ONE variable. Bumps version, saves prior to `state/history/v{NNNN}.yaml`, appends to `state/hypotheses.jsonl`.
+- **`--hermes`** — the production mode (Phase 7). Reads the latest 25 trades and current strategy, formats them as a prompt, calls the configured AI model (Google Gemini, Anthropic, or OpenAI) to scientifically adjust exactly one parameter and log its hypothesis. Checks `HERMES_REFLECT_MODE` to run dynamic AI reflection.
 
 **`score.py`** — `score(trades, goal) -> float in [-1, +1]`. Composite of:
 - Realised return = `cumulative_pnl_inr ÷ starting_capital_inr` vs `target_return_30d`
@@ -281,14 +283,21 @@ version: "01"
 assets: "{assets}"
 exchange: "NSE"
 entry:
-  indicator: rsi
-  threshold: 35          # slightly looser than crypto default — Indian equities less volatile
+  indicator: ai
+  min_sentiment: 0.3
   direction: long
+stop_loss_mode: ai
 stop_loss_pct: 2.0
-position_size_r: 0.5
+atr_multiplier: 2.2
+position_size_r: 0.9
+max_active_positions: 4
+enable_rotation: true
+rotation_score_diff: 3
 holding_period_days: 5  # medium-term swing — respects T+1 NSE settlement
+avoid_bear_regimes: true
 avoid_expiry_weeks: true # avoid positions over F&O expiry Thursdays
 ```
+
 
 **`Dockerfile`** for Railway:
 
@@ -335,9 +344,14 @@ GEMINI_API_KEY=
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
 
+# Dev/Maintenance Overrides
+FORCE_OVERWRITE_STRATEGY=false # Set to true to force copy/reset strategy.yaml from templates on next boot
+RESET_TRADING_HISTORY=false    # Set to true to wipe all active positions, trades.jsonl, and heartbeats on next boot
+
 # Do NOT set these until you are ready for live trading (NOT today)
 # HERMES_TRADING_MODE=live
 # HERMES_TRADING_I_ACCEPT_RISK=true
+
 ```
 
 Initialise the local uv project:
@@ -368,22 +382,26 @@ First, add the dashboard server dependency:
 cd ~/hermes-trading && uv add aiohttp
 ```
 
-Now create the dashboard server at `hermes_trading/dashboard.py`. This is a lightweight aiohttp web server that reads the state files and serves a live HTML dashboard at `http://localhost:8080`. Generate real, runnable code with these sections:
+Now create the dashboard server at `hermes_trading/dashboard.py`. This is a lightweight aiohttp web server that reads the state files, handles configurations, and serves a live HTML dashboard at `http://localhost:8080`. Generate real, runnable code with these sections and routes:
 
-**`dashboard.py`** — aiohttp server, no external frontend framework. Serves a single HTML page that auto-refreshes every 10 seconds. Reads these files on every request:
-- `state/goal.yaml` — target return, max drawdown, min Sharpe, asset, reflection_every
-- `state/trades.jsonl` — all paper trades (one JSON object per line)
-- `state/strategy.yaml` — current version and all variables
-- `state/hypotheses.jsonl` — reflection log
-- `state/heartbeat.json` — last loop heartbeat
+**`dashboard.py`** — aiohttp server, no external frontend framework. Serves a single HTML page that auto-refreshes every 10 seconds.
+- **GET `/`**: Renders the dashboard HTML page.
+- **GET `/strategy`**: Returns the current raw contents of `state/strategy.yaml` as text/yaml.
+- **GET `/goal`**: Returns the current raw contents of `state/goal.yaml` as text/yaml.
+- **POST `/add_asset`**: Form handler to add an asset symbol to the strategy/goal basket.
+- **POST `/remove_asset`**: Form handler to remove an asset symbol if it doesn't have open positions.
+- **POST `/reset_history`**: Wipes trades/heartbeat and resets capital to starting capital.
+- **Query Parameter `?reflect=true`**: Triggers a manual strategy reflection cycle.
 
 Dashboard HTML layout (all rendered server-side, no JS framework):
 
 **Section 1 — Header bar**: assets basket, strategy version badge, paper mode badge, last heartbeat time in IST, market status (open / closed).
+- Includes an **Asset Management Form**: Text input to add tickers, and "Remove" buttons next to active tickers.
 
 **Section 2 — Metric cards (5 across)**:
 - Current capital (INR) — e.g. "₹1,02,340" with "+₹2,340 (+2.3%)" subtitle in green/red
 - Starting capital (INR) — static reference, e.g. "₹1,00,000"
+- Live Portfolio Value (INR) — sum of cash plus current values of all open positions based on latest fetched prices (green/red indicator for absolute live status).
 - Return % achieved vs target (e.g. "+2.3% of +4.0%")
 - Max drawdown hit vs limit (amber if >70% of limit used, red if >90%)
 - Sharpe ratio vs target
@@ -399,6 +417,8 @@ Dashboard HTML layout (all rendered server-side, no JS framework):
 **Section 5 — Recent trades table** (last 10, newest first): columns = Date (IST), Asset, Side, Entry price (₹), Exit price (₹ or "open"), P&L (₹, coloured), Result badge (Win / Loss / Open).
 
 **Section 6 — Strategy evolution**: list of all versions from hypotheses.jsonl, newest first. Each row: version number · date · variable changed · old value → new value.
+
+**Section 7 — System Controls**: Links to view raw `/strategy` or `/goal` configurations, a button to trigger manual strategy reflection, and a destructive "Wipe History & Reset" form/button.
 
 The page `<head>` includes `<meta http-equiv="refresh" content="10">` so it updates automatically. Style with a minimal inline `<style>` block — flat, clean, IST timestamps on all dates.
 
