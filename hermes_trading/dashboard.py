@@ -231,6 +231,13 @@ async def handle_dashboard(request):
             
         status = t.get('status', '-').upper()
         
+        # Determine Current Price for only open positions
+        if t.get('status') == 'open':
+            live_price = prices.get(asset, {}).get("price")
+            current_price_str = f"₹{live_price:.2f}" if live_price is not None else "-"
+        else:
+            current_price_str = "-"
+        
         trade_rows.append(f"""
         <tr>
             <td>{entry_time}</td>
@@ -238,6 +245,7 @@ async def handle_dashboard(request):
             <td>{side}</td>
             <td>{quantity}</td>
             <td>₹{entry_price:.2f}</td>
+            <td style="font-family:monospace; font-weight:bold; color:#0288d1;">{current_price_str}</td>
             <td style="color:#c62828;">{sl_str}</td>
             <td style="color:#2e7d32;">{tp_str}</td>
             <td>{exit_str}</td>
@@ -245,7 +253,7 @@ async def handle_dashboard(request):
             <td>{status}</td>
         </tr>
         """)
-    recent_trades_html = "".join(trade_rows) if trade_rows else "<tr><td colspan='10' style='text-align:center'>No trades yet</td></tr>"
+    recent_trades_html = "".join(trade_rows) if trade_rows else "<tr><td colspan='11' style='text-align:center'>No trades yet</td></tr>"
 
     html = f"""
     <!DOCTYPE html>
@@ -374,6 +382,7 @@ async def handle_dashboard(request):
                         <th>Side</th>
                         <th>Qty</th>
                         <th>Entry Price</th>
+                        <th>Current Price</th>
                         <th>Stop Loss</th>
                         <th>Target Price</th>
                         <th>Exit Price</th>
