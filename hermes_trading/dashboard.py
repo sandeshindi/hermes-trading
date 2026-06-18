@@ -213,8 +213,12 @@ async def handle_dashboard(request):
             if key not in merged_trades_dict or t.get("status") == "closed":
                 merged_trades_dict[key] = t
 
-    # Sort merged trades by entry_time descending (newest first)
-    sorted_trades = sorted(merged_trades_dict.values(), key=lambda x: x.get("entry_time", ""), reverse=True)
+    # Sort merged trades: always show open/active trades first, then sort by entry_time descending (newest first)
+    sorted_trades = sorted(
+        merged_trades_dict.values(),
+        key=lambda x: (1 if x.get("status") == "open" else 0, x.get("entry_time", "")),
+        reverse=True
+    )
     
     trade_rows = []
     for t in sorted_trades:
