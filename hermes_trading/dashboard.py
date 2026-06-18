@@ -202,6 +202,51 @@ async def handle_dashboard(request):
     live_portfolio_value = current_capital + unrealized_pnl
     live_return_pct = ((live_portfolio_value - starting_capital) / starting_capital) * 100
     
+    # Pre-format recent trades table rows to avoid nested f-string quoting issues
+    recent_trades = trades[-10:][::-1]
+    trade_rows = []
+    for t in recent_trades:
+        entry_time = t.get('entry_time', '-')
+        asset = t.get('asset', '-')
+        side = t.get('side', '-')
+        quantity = t.get('quantity', '-')
+        entry_price = t.get('entry_price', 0.0)
+        
+        sl_val = t.get('stop_loss_price')
+        sl_str = f"₹{sl_val:.2f}" if sl_val is not None else "-"
+        
+        tp_val = t.get('target_price')
+        tp_str = f"₹{tp_val:.2f}" if tp_val is not None else "-"
+        
+        exit_val = t.get('exit_price')
+        exit_str = f"₹{exit_val:.2f}" if (exit_val is not None and exit_val != '-') else "-"
+        
+        pnl_val = t.get('pnl_inr')
+        if pnl_val is not None:
+            pnl_color = "green" if pnl_val >= 0 else "red"
+            pnl_str = f"₹{pnl_val:+,.2f}"
+        else:
+            pnl_color = "black"
+            pnl_str = "-"
+            
+        status = t.get('status', '-').upper()
+        
+        trade_rows.append(f"""
+        <tr>
+            <td>{entry_time}</td>
+            <td style="font-weight:bold;">{asset}</td>
+            <td>{side}</td>
+            <td>{quantity}</td>
+            <td>₹{entry_price:.2f}</td>
+            <td style="color:#c62828;">{sl_str}</td>
+            <td style="color:#2e7d32;">{tp_str}</td>
+            <td>{exit_str}</td>
+            <td style="color: {pnl_color}; font-weight:bold;">{pnl_str}</td>
+            <td>{status}</td>
+        </tr>
+        """)
+    recent_trades_html = "".join(trade_rows) if trade_rows else "<tr><td colspan='10' style='text-align:center'>No trades yet</td></tr>"
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -337,21 +382,7 @@ async def handle_dashboard(request):
                     </tr>
                 </thead>
                 <tbody>
-                    {"".join([
-                        f"<tr>"
-                        f"<td>{t['entry_time']}</td>"
-                        f"<td>{t.get('asset', '-')}</td>"
-                        f"<td>{t['side']}</td>"
-                        f"<td>{t.get('quantity', '-')}</td>"
-                        f"<td>₹{t['entry_price']:.2f}</td>"
-                        f"<td>{f'₹{t[\"stop_loss_price\"]:.2f}' if t.get('stop_loss_price') is not None else '-'}</td>"
-                        f"<td>{f'₹{t[\"target_price\"]:.2f}' if t.get('target_price') is not None else '-'}</td>"
-                        f"<td>{f'₹{t[\"exit_price\"]:.2f}' if (t.get('exit_price') is not None and t.get('exit_price') != '-') else '-'}</td>"
-                        f"<td style='color: {\"green\" if t.get(\"pnl_inr\", 0) >= 0 else \"red\"}'>{f'₹{t[\"pnl_inr\"]:+,.2f}' if t.get('pnl_inr') is not None else '-'}</td>"
-                        f"<td>{t['status'].upper()}</td>"
-                        f"</tr>"
-                        for t in trades[-10:][::-1]
-                    ]) if trades else "<tr><td colspan='10' style='text-align:center'>No trades yet</td></tr>"}
+                    {recent_trades_html}
                 </tbody>
             </table>
         </div>
