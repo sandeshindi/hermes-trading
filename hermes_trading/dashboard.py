@@ -329,13 +329,29 @@ async def handle_dashboard(request):
                         <th>Side</th>
                         <th>Qty</th>
                         <th>Entry Price</th>
+                        <th>Stop Loss</th>
+                        <th>Target Price</th>
                         <th>Exit Price</th>
                         <th>P&L (INR)</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {"".join([f"<tr><td>{t['entry_time']}</td><td>{t.get('asset', '-')}</td><td>{t['side']}</td><td>{t.get('quantity', '-')}</td><td>₹{t['entry_price']}</td><td>₹{t.get('exit_price', '-')}</td><td style='color: {'green' if t.get('pnl_inr', 0) >= 0 else 'red'}'>{t.get('pnl_inr', '-')}</td><td>{t['status']}</td></tr>" for t in trades[-10:][::-1]]) if trades else "<tr><td colspan='8' style='text-align:center'>No trades yet</td></tr>"}
+                    {"".join([
+                        f"<tr>"
+                        f"<td>{t['entry_time']}</td>"
+                        f"<td>{t.get('asset', '-')}</td>"
+                        f"<td>{t['side']}</td>"
+                        f"<td>{t.get('quantity', '-')}</td>"
+                        f"<td>₹{t['entry_price']:.2f}</td>"
+                        f"<td>{f'₹{t[\"stop_loss_price\"]:.2f}' if t.get('stop_loss_price') is not None else '-'}</td>"
+                        f"<td>{f'₹{t[\"target_price\"]:.2f}' if t.get('target_price') is not None else '-'}</td>"
+                        f"<td>{f'₹{t[\"exit_price\"]:.2f}' if (t.get('exit_price') is not None and t.get('exit_price') != '-') else '-'}</td>"
+                        f"<td style='color: {\"green\" if t.get(\"pnl_inr\", 0) >= 0 else \"red\"}'>{f'₹{t[\"pnl_inr\"]:+,.2f}' if t.get('pnl_inr') is not None else '-'}</td>"
+                        f"<td>{t['status'].upper()}</td>"
+                        f"</tr>"
+                        for t in trades[-10:][::-1]
+                    ]) if trades else "<tr><td colspan='10' style='text-align:center'>No trades yet</td></tr>"}
                 </tbody>
             </table>
         </div>
