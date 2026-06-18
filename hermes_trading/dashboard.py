@@ -202,14 +202,26 @@ async def handle_dashboard(request):
     live_portfolio_value = current_capital + unrealized_pnl
     live_return_pct = ((live_portfolio_value - starting_capital) / starting_capital) * 100
     
-    # Pre-format recent trades table rows to avoid nested f-string quoting issues
-    recent_trades = trades[-10:][::-1]
+    # Merge open and closed trades by unique key (asset, entry_time) to present as a single row
+    merged_trades_dict = {}
+    for t in trades:
+        asset = t.get("asset")
+        entry_time = t.get("entry_time")
+        if asset and entry_time:
+            key = (asset, entry_time)
+            # Default ordering: 'closed' overrides 'open' naturally as it appears later in trades.jsonl
+            if key not in merged_trades_dict or t.get("status") == "closed":
+                merged_trades_dict[key] = t
+
+    # Sort merged trades by entry_time descending (newest first)
+    sorted_trades = sorted(merged_trades_dict.values(), key=lambda x: x.get("entry_time", ""), reverse=True)
+    
     trade_rows = []
-    for t in recent_trades:
+    for t in sorted_trades:
         entry_time = t.get('entry_time', '-')
         asset = t.get('asset', '-')
         side = t.get('side', '-')
-        quantity = t.get('quantity', '-')
+        quantity = t.get('quantity', 0)
         entry_price = t.get('entry_price', 0.0)
         
         sl_val = t.get('stop_loss_price')
@@ -221,22 +233,29 @@ async def handle_dashboard(request):
         exit_val = t.get('exit_price')
         exit_str = f"₹{exit_val:.2f}" if (exit_val is not None and exit_val != '-') else "-"
         
-        pnl_val = t.get('pnl_inr')
-        if pnl_val is not None:
-            pnl_color = "green" if pnl_val >= 0 else "red"
-            pnl_str = f"₹{pnl_val:+,.2f}"
-        else:
-            pnl_color = "black"
-            pnl_str = "-"
-            
         status = t.get('status', '-').upper()
         
-        # Determine Current Price for only open positions
+        # Determine Current Price & live P&L if position is open
         if t.get('status') == 'open':
             live_price = prices.get(asset, {}).get("price")
             current_price_str = f"₹{live_price:.2f}" if live_price is not None else "-"
+            
+            if live_price is not None and entry_price:
+                pnl_val = (live_price - entry_price) * quantity
+                pnl_color = "green" if pnl_val >= 0 else "red"
+                pnl_str = f"₹{pnl_val:+,.2f} <span style='font-size:0.8em; font-weight:normal; color:#888;'>(live)</span>"
+            else:
+                pnl_color = "black"
+                pnl_str = "-"
         else:
             current_price_str = "-"
+            pnl_val = t.get('pnl_inr')
+            if pnl_val is not None:
+                pnl_color = "green" if pnl_val >= 0 else "red"
+                pnl_str = f"₹{pnl_val:+,.2f}"
+            else:
+                pnl_color = "black"
+                pnl_str = "-"
         
         trade_rows.append(f"""
         <tr>
@@ -290,6 +309,24 @@ async def handle_dashboard(request):
             .ai-holding {{ background: #1565c0; color: #bbdefb; }}
             .ai-scanning {{ background: #00838f; color: #e0f7fa; }}
             .ai-penalty {{ background: #b71c1c; color: #ffcdd2; animation: pulse 1.5s infinite; }}
+            .table-container {{
+                max-height: 400px;
+                overflow-y: auto;
+                margin-top: 15px;
+                border: 1px solid #eee;
+                border-radius: 6px;
+            }}
+            .table-container table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            .table-container th {{
+                position: sticky;
+                top: 0;
+                background: #eee;
+                z-index: 1;
+                box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+            }}
             @keyframes pulse {{
                 0% {{ opacity: 0.6; }}
                 50% {{ opacity: 1.0; }}
@@ -374,26 +411,28 @@ async def handle_dashboard(request):
 
         <div class="card">
             <h2>Recent Trades</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date (IST)</th>
-                        <th>Asset</th>
-                        <th>Side</th>
-                        <th>Qty</th>
-                        <th>Entry Price</th>
-                        <th>Current Price</th>
-                        <th>Stop Loss</th>
-                        <th>Target Price</th>
-                        <th>Exit Price</th>
-                        <th>P&L (INR)</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {recent_trades_html}
-                </tbody>
-            </table>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date (IST)</th>
+                            <th>Asset</th>
+                            <th>Side</th>
+                            <th>Qty</th>
+                            <th>Entry Price</th>
+                            <th>Current Price</th>
+                            <th>Stop Loss</th>
+                            <th>Target Price</th>
+                            <th>Exit Price</th>
+                            <th>P&L (INR)</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {recent_trades_html}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div class="card">
