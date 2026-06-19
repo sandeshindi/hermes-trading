@@ -388,6 +388,7 @@ Now create the dashboard server at `hermes_trading/dashboard.py`. This is a ligh
 - **GET `/`**: Renders the dashboard HTML page.
 - **GET `/strategy`**: Returns the current raw contents of `state/strategy.yaml` as text/yaml.
 - **GET `/goal`**: Returns the current raw contents of `state/goal.yaml` as text/yaml.
+- **GET `/trades`**: Returns the current raw contents of `state/trades.jsonl` as text/plain.
 - **POST `/add_asset`**: Form handler to add an asset symbol to the strategy/goal basket.
 - **POST `/remove_asset`**: Form handler to remove an asset symbol if it doesn't have open positions.
 - **POST `/reset_history`**: Wipes trades/heartbeat and resets capital to starting capital.
@@ -418,7 +419,7 @@ Dashboard HTML layout (all rendered server-side, no JS framework):
 
 **Section 6 — Strategy evolution**: list of all versions from hypotheses.jsonl, newest first. Each row: version number · date · variable changed · old value → new value.
 
-**Section 7 — System Controls**: Links to view raw `/strategy` or `/goal` configurations, a button to trigger manual strategy reflection, and a destructive "Wipe History & Reset" form/button.
+**Section 7 — System Controls**: Links to view raw `/strategy`, `/goal`, or `/trades` configurations, a button to trigger manual strategy reflection, and a destructive "Wipe History & Reset" form/button.
 
 The page `<head>` includes `<meta http-equiv="refresh" content="10">` so it updates automatically. Style with a minimal inline `<style>` block — flat, clean, IST timestamps on all dates.
 
