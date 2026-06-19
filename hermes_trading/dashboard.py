@@ -86,6 +86,13 @@ async def handle_goal_file(request):
         return web.Response(text=goal_path.read_text(), content_type='text/yaml')
     return web.Response(text="goal.yaml not found", status=404)
 
+async def handle_trades_file(request):
+    from hermes_trading.config import get_state_dir
+    trades_path = get_state_dir() / "trades.jsonl"
+    if trades_path.exists():
+        return web.Response(text=trades_path.read_text(), content_type='text/plain')
+    return web.Response(text="trades.jsonl not found", status=404)
+
 async def handle_dashboard(request):
     from hermes_trading.config import get_state_dir
     state_path = get_state_dir()
@@ -349,7 +356,8 @@ async def handle_dashboard(request):
                 <p>Status: <span class="status-{heartbeat.get('market_status', 'closed')}">{heartbeat.get('market_status', 'Unknown').upper()}</span> | Last Heartbeat: {heartbeat.get('timestamp', 'N/A')}</p>
                 <p style="margin-top: 10px; font-size: 0.95em;">
                     <a href="/strategy" target="_blank" style="color: #0288d1; font-weight: bold; text-decoration: none; margin-right: 15px; border-bottom: 1px dashed #0288d1;">📄 View Active Strategy</a>
-                    <a href="/goal" target="_blank" style="color: #0288d1; font-weight: bold; text-decoration: none; border-bottom: 1px dashed #0288d1;">🎯 View Active Goal</a>
+                    <a href="/goal" target="_blank" style="color: #0288d1; font-weight: bold; text-decoration: none; margin-right: 15px; border-bottom: 1px dashed #0288d1;">🎯 View Active Goal</a>
+                    <a href="/trades" target="_blank" style="color: #0288d1; font-weight: bold; text-decoration: none; border-bottom: 1px dashed #0288d1;">📈 View Raw Trades (JSONL)</a>
                 </p>
             </div>
             <div>
@@ -468,6 +476,7 @@ async def start_dashboard():
         web.get('/', handle_dashboard),
         web.get('/strategy', handle_strategy_file),
         web.get('/goal', handle_goal_file),
+        web.get('/trades', handle_trades_file),
         web.post('/add_asset', handle_add_asset),
         web.post('/remove_asset', handle_remove_asset)
     ])
