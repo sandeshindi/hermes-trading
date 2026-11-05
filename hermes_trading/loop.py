@@ -412,8 +412,10 @@ async def trading_loop(assets, goal):
                             print(f">>> CLOSED {asset} Trade: PnL Rs.{pnl:.2f}")
                             
                             # Update Capital
-                            goal["current_capital_inr"] += pnl
-                            save_yaml(goal_path, goal)
+                            fresh_goal = load_yaml(goal_path)
+                            fresh_goal["current_capital_inr"] = round(fresh_goal.get("current_capital_inr", 50000) + pnl, 2)
+                            save_yaml(goal_path, fresh_goal)
+                            goal = fresh_goal
                             
                             # Log to trades
                             with open(trades_path, "a") as f:
@@ -598,8 +600,10 @@ async def trading_loop(assets, goal):
                                             low_pos["pnl_inr"] = round(pnl, 2)
                                             
                                             # Update Capital
-                                            goal["current_capital_inr"] += pnl
-                                            save_yaml(goal_path, goal)
+                                            fresh_goal = load_yaml(goal_path)
+                                            fresh_goal["current_capital_inr"] = round(fresh_goal.get("current_capital_inr", 50000) + pnl, 2)
+                                            save_yaml(goal_path, fresh_goal)
+                                            goal = fresh_goal
                                             
                                             # Log closed trade to trades file
                                             with open(trades_path, "a") as f:
@@ -615,6 +619,8 @@ async def trading_loop(assets, goal):
                                     print(f"[{now.strftime('%H:%M:%S')}] Signal triggered for {asset} but skipped: max active positions slot capacity ({max_active}) reached and rotation not applicable.")
                                     continue
                             
+                            # Reload goal to ensure any added capital immediately scales volume
+                            goal = load_yaml(goal_path)
                             capital = goal.get("current_capital_inr", 50000)
                             asset_capital = capital / max_active
                             investment = asset_capital * position_size_r

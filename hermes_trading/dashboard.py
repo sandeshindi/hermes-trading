@@ -8,6 +8,27 @@ import pytz
 
 IST = pytz.timezone("Asia/Kolkata")
 
+async def handle_add_funds(request):
+    from hermes_trading.capital import add_funds
+    data = await request.post()
+    amount_raw = data.get("amount", "").strip().replace(",", "")
+    update_base = data.get("update_base") in ["on", "true", "1", "yes"]
+    note = data.get("note", "").strip()
+    
+    if amount_raw:
+        try:
+            amount = float(amount_raw)
+            if amount > 0:
+                add_funds(amount, update_starting_capital=update_base, note=note)
+                raise web.HTTPFound(f'/?funds_added={amount:.2f}')
+        except web.HTTPFound:
+            raise
+        except Exception as e:
+            print(f">>> [Dashboard] Error depositing funds: {e}")
+            raise web.HTTPFound(f'/?error={str(e)}')
+            
+    raise web.HTTPFound('/')
+
 async def handle_add_asset(request):
     from hermes_trading.config import get_state_dir
     state_path = get_state_dir()
@@ -191,6 +212,45 @@ async def handle_dashboard(request):
     starting_capital = goal.get("starting_capital_inr", 1)
     return_pct = ((current_capital - starting_capital) / starting_capital) * 100
     
+    # Calculate position sizing & volume capacities
+    max_active = int(strategy.get("max_active_positions", 4))
+    position_size_r = float(strategy.get("position_size_r", 0.9))
+    slot_capital = current_capital / max_active if max_active > 0 else current_capital
+    trade_capacity = slot_capital * position_size_r
+
+    # Fetch capital deposit history
+    from hermes_trading.capital import get_capital_history
+    capital_history = get_capital_history()
+    deposit_rows = []
+    for d in capital_history[::-1][:5]:
+        ts = d.get("timestamp", "-")
+        amt = d.get("amount", 0)
+        new_cap = d.get("new_current_capital", 0)
+        note = d.get("note", "-")
+        deposit_rows.append(f"""
+        <tr>
+            <td style="padding:8px 12px; color:#666; font-size:0.9em;">{ts}</td>
+            <td style="padding:8px 12px; color:#2e7d32; font-weight:bold;">+₹{amt:,.2f}</td>
+            <td style="padding:8px 12px; font-weight:bold;">₹{new_cap:,.2f}</td>
+            <td style="padding:8px 12px; color:#555; font-size:0.9em;">{note}</td>
+        </tr>
+        """)
+    deposit_history_html = "".join(deposit_rows) if deposit_rows else "<tr><td colspan='4' style='text-align:center; padding:12px; color:#888;'>No deposits recorded yet</td></tr>"
+
+    funds_added = request.query.get("funds_added")
+    alert_html = ""
+    if funds_added:
+        try:
+            amt_val = float(funds_added)
+            alert_html = f"""
+            <div style="background: #e8f5e9; border: 1px solid #81c784; color: #2e7d32; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;">
+                <span>✅ Successfully deposited ₹{amt_val:,.2f} into portfolio! Purchasing power and trade volume capacity scaled immediately.</span>
+                <a href="/" style="color: #2e7d32; text-decoration: none; font-size: 1.2em; margin-left: 15px;">&times;</a>
+            </div>
+            """
+        except Exception:
+            pass
+    
     # Calculate Unrealized P&L from active positions and live price feed
     active_positions = {}
     for t in trades:
@@ -350,6 +410,7 @@ async def handle_dashboard(request):
             <span class="ticker-label">Live NSE Prices</span>
             {ticker_html}
         </div>
+        {alert_html}
         <div class="card header">
             <div>
                 <h1>{", ".join(goal.get('assets', []))} <span style="font-size: 0.5em; background: #eee; padding: 4px 8px; border-radius: 4px;">v{strategy.get('version', '01')}</span></h1>
@@ -376,6 +437,11 @@ async def handle_dashboard(request):
                 <p>₹{current_capital:,.2f}</p>
                 <span style="color: {'green' if return_pct >= 0 else 'red'}">{return_pct:+.2f}% (Realized)</span>
             </div>
+            <div class="card metric" style="border: 2px solid #0288d1; background: #e1f5fe;">
+                <h3 style="color: #0288d1; font-weight: bold;">Trade Capacity / Slot</h3>
+                <p style="color: #01579b; font-size: 1.5em;">₹{trade_capacity:,.2f}</p>
+                <span style="color: #0277bd; font-size: 0.85em; font-weight: bold;">₹{slot_capital:,.2f} slot &bull; {int(position_size_r*100)}% risk</span>
+            </div>
             <div class="card metric">
                 <h3>Unrealized P&L</h3>
                 <p style="color: {'green' if unrealized_pnl >= 0 else 'red'}">₹{unrealized_pnl:+,.2f}</p>
@@ -392,6 +458,82 @@ async def handle_dashboard(request):
             <div class="card metric">
                 <h3>Max Drawdown</h3>
                 <p>{goal.get('max_drawdown', 0)*100}%</p>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 15px; flex-wrap: wrap; gap: 15px;">
+                <div>
+                    <h2 style="margin: 0; color: #1b5e20;">💰 Capital Management & Volume Scaling</h2>
+                    <p style="margin: 5px 0 0; color: #666; font-size: 0.9em;">Deposit funds into the portfolio. Capital is automatically allocated across slots, scaling order volumes for all upcoming trades.</p>
+                </div>
+                <div style="text-align: right; background: #f1f8e9; padding: 10px 16px; border-radius: 6px; border: 1px solid #c8e6c9;">
+                    <div style="font-size: 0.8em; color: #558b2f; font-weight: bold; text-transform: uppercase;">Max Purchasing Power / Trade</div>
+                    <div style="font-size: 1.3em; color: #2e7d32; font-weight: bold;">₹{trade_capacity:,.2f}</div>
+                    <div style="font-size: 0.8em; color: #666;">({max_active} concurrent slots &bull; {int(position_size_r*100)}% allocation)</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+                <!-- Left: Deposit Form -->
+                <div style="flex: 1.2; min-width: 320px;">
+                    <form action="/add_funds" method="post" id="depositForm">
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; font-weight: bold; margin-bottom: 6px; color: #333; font-size: 0.95em;">Quick Add Presets:</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <button type="button" onclick="setDepositAmount(10000)" style="background: #e0f2f1; color: #00796b; border: 1px solid #80cbc4; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;">+₹10,000</button>
+                                <button type="button" onclick="setDepositAmount(25000)" style="background: #e0f2f1; color: #00796b; border: 1px solid #80cbc4; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;">+₹25,000</button>
+                                <button type="button" onclick="setDepositAmount(50000)" style="background: #e0f2f1; color: #00796b; border: 1px solid #80cbc4; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;">+₹50,000</button>
+                                <button type="button" onclick="setDepositAmount(100000)" style="background: #e0f2f1; color: #00796b; border: 1px solid #80cbc4; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;">+₹1,00,000</button>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <label for="deposit_amount" style="display: block; font-weight: bold; margin-bottom: 6px; color: #333; font-size: 0.95em;">Deposit Amount (INR):</label>
+                            <div style="display: flex; align-items: center; position: relative;">
+                                <span style="position: absolute; left: 12px; font-weight: bold; color: #555; font-size: 1.1em;">₹</span>
+                                <input type="number" id="deposit_amount" name="amount" min="1" step="any" placeholder="e.g. 50000" required style="padding: 10px 10px 10px 30px; border: 1px solid #ccc; border-radius: 4px; font-size: 1.05em; font-weight: bold; width: 100%; box-sizing: border-box;">
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <label for="deposit_note" style="display: block; font-weight: bold; margin-bottom: 6px; color: #333; font-size: 0.9em;">Deposit Note / Reason (Optional):</label>
+                            <input type="text" id="deposit_note" name="note" placeholder="e.g. Scaling portfolio to trade higher volumes" style="padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95em; width: 100%; box-sizing: border-box;">
+                        </div>
+
+                        <div style="margin-bottom: 16px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88em; color: #444; cursor: pointer;">
+                                <input type="checkbox" name="update_base" value="on" checked style="width: 16px; height: 16px;">
+                                <span>Update starting capital baseline (recommended &mdash; keeps ROI % and Drawdown % mathematically accurate)</span>
+                            </label>
+                        </div>
+
+                        <button type="submit" style="background: #2e7d32; color: white; border: none; padding: 12px 24px; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; transition: background 0.2s; width: 100%;" onmouseover="this.style.background='#1b5e20'" onmouseout="this.style.background='#2e7d32'">
+                            💰 Deposit Funds &amp; Scale Volumes
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Right: Recent Deposits Table -->
+                <div style="flex: 1.2; min-width: 320px; border-left: 1px solid #eee; padding-left: 20px;">
+                    <h3 style="margin: 0 0 10px; color: #333; font-size: 1em;">Recent Capital Injections</h3>
+                    <div style="max-height: 220px; overflow-y: auto; border: 1px solid #eee; border-radius: 6px;">
+                        <table style="width: 100%; font-size: 0.88em;">
+                            <thead>
+                                <tr>
+                                    <th style="padding: 8px;">Date (IST)</th>
+                                    <th style="padding: 8px;">Added</th>
+                                    <th style="padding: 8px;">New Capital</th>
+                                    <th style="padding: 8px;">Note</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {deposit_history_html}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="margin: 8px 0 0; font-size: 0.8em; color: #777;">* Compounding loop updates available capital after each closed trade.</p>
+                </div>
             </div>
         </div>
 
@@ -464,6 +606,15 @@ async def handle_dashboard(request):
                 </tbody>
             </table>
         </div>
+        <script>
+            function setDepositAmount(val) {{
+                var input = document.getElementById('deposit_amount');
+                if (input) {{
+                    input.value = val;
+                    input.focus();
+                }}
+            }}
+        </script>
     </body>
     </html>
     """
@@ -478,7 +629,8 @@ async def start_dashboard():
         web.get('/goal', handle_goal_file),
         web.get('/trades', handle_trades_file),
         web.post('/add_asset', handle_add_asset),
-        web.post('/remove_asset', handle_remove_asset)
+        web.post('/remove_asset', handle_remove_asset),
+        web.post('/add_funds', handle_add_funds)
     ])
     runner = web.AppRunner(app)
     await runner.setup()
